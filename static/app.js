@@ -771,6 +771,9 @@ function enterDashboard() {
     const dash = document.getElementById("dashboardWrap");
     if (!hero || !dash) return;
 
+    // Prevent double-click
+    if (hero.classList.contains("hero-exit")) return;
+
     hero.classList.add("hero-exit");
     setTimeout(() => {
         hero.style.display = "none";
@@ -778,6 +781,8 @@ function enterDashboard() {
         document.body.classList.remove("hero-active");
         document.body.classList.add("dashboard-active");
         initDashboard();
+        // Scroll to top of dashboard
+        window.scrollTo({ top: 0, behavior: "instant" });
         // Ensure map renders correctly after transition
         if (map) setTimeout(() => map.invalidateSize(), 100);
     }, 600);
@@ -799,8 +804,74 @@ function showHero() {
 }
 
 function scrollToGlobe() {
+    // Dramatic globe exploration — zoom camera, pulse markers, spin
     const globeWrap = document.getElementById("heroGlobeWrap");
-    if (globeWrap) globeWrap.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (!globeWrap) return;
+
+    // Scroll the globe into center view
+    globeWrap.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    // Add exploration class for glow effect
+    globeWrap.classList.add("globe-exploring");
+    setTimeout(() => globeWrap.classList.remove("globe-exploring"), 4000);
+
+    // Zoom camera into the globe
+    if (globe.camera) {
+        const startZ = globe.camera.position.z;
+        const targetZ = 1.8; // zoom in
+        let progress = 0;
+
+        function zoomIn() {
+            progress += 0.02;
+            if (progress >= 1) {
+                // After zoom in, slowly zoom back out
+                let outProgress = 0;
+                function zoomOut() {
+                    outProgress += 0.01;
+                    if (outProgress >= 1) return;
+                    const ease = outProgress * outProgress * (3 - 2 * outProgress);
+                    globe.camera.position.z = targetZ + (startZ - targetZ) * ease;
+                    requestAnimationFrame(zoomOut);
+                }
+                setTimeout(zoomOut, 1500);
+                return;
+            }
+            const ease = 1 - Math.pow(1 - progress, 3);
+            globe.camera.position.z = startZ + (targetZ - startZ) * ease;
+            requestAnimationFrame(zoomIn);
+        }
+        zoomIn();
+    }
+
+    // Pulse all markers bigger
+    globe.markers.forEach((m, i) => {
+        if (m.dot) {
+            const origScale = m.dot.scale.x;
+            setTimeout(() => {
+                m.dot.scale.set(2.5, 2.5, 2.5);
+                setTimeout(() => m.dot.scale.set(origScale, origScale, origScale), 800);
+            }, i * 200);
+        }
+    });
+
+    // Flash tooltip with info
+    const tooltip = document.getElementById("globeTooltip");
+    if (tooltip) {
+        tooltip.innerHTML = `
+            <div class="gt-zone">🌍 Globe Explorer</div>
+            <div class="gt-row"><span class="gt-label">📍 Sites:</span> ${Object.keys(SITES).length} pilot sites active</div>
+            <div class="gt-row"><span class="gt-label">🛰️ Orbits:</span> 3 satellite tracks visible</div>
+            <div class="gt-row"><span class="gt-label">🌾 Coverage:</span> 6 agro-climatic zones</div>
+            <div class="gt-row" style="margin-top:8px;opacity:0.6;">Click any marker or drag to explore</div>`;
+        tooltip.style.display = "block";
+        tooltip.style.left = "50%";
+        tooltip.style.top = "20px";
+        tooltip.style.transform = "translateX(-50%)";
+        setTimeout(() => {
+            tooltip.style.display = "none";
+            tooltip.style.transform = "";
+        }, 4000);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -917,6 +988,10 @@ function ndviColor(v) {
 
 async function switchSite(siteKey) {
     currentSite = siteKey;
+    // Reset lazy-load flags so new site data loads fresh
+    _analyticsLoaded = false;
+    _riskLoaded = false;
+    _npuLoaded = false;
     await loadDashboard(siteKey);
 }
 
@@ -1051,7 +1126,28 @@ function switchTab(tabId) {
     document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
     document.querySelector(`.tab[data-tab="${tabId}"]`)?.classList.add("active");
     q(`#panel-${tabId}`)?.classList.add("active");
+
+    // Lazy-load new tabs on first visit
+    if (tabId === "analytics" && !_analyticsLoaded) {
+        _analyticsLoaded = true;
+        loadCorrelation();
+        loadTrendAnalysis();
+        loadHeatmap();
+        loadActivityLog();
+    }
+    if (tabId === "risk" && !_riskLoaded) {
+        _riskLoaded = true;
+        loadRiskMatrix();
+        loadFieldScores();
+    }
+    if (tabId === "npu" && !_npuLoaded) {
+        _npuLoaded = true;
+        loadNPUPerformance();
+    }
 }
+let _analyticsLoaded = false;
+let _riskLoaded = false;
+let _npuLoaded = false;
 
 // ═══════════════════════════════════════════════════════════════
 //  11. CHARTS — NDVI / NDWI
@@ -2546,7 +2642,714 @@ setInterval(checkSystemHealth, 30000);
 
 
 // ═══════════════════════════════════════════════════════════════
-//  32. STARTUP TOASTS & ENTRY ENHANCEMENTS
+//  33. ANALYTICS — CORRELATION ANALYSIS
+// ═══════════════════════════════════════════════════════════════
+
+let _correlationData = null;
+let _correlationChart = null;
+
+async function loadCorrelation() {
+    try {
+        const resp = await fetch(`/api/analytics/correlation/${currentSite}`);
+        _correlationData = await resp.json();
+        renderCorrelationMatrix(_correlationData);
+
+        // Populate field select
+        const sel = q("#corrFieldSelect");
+        if (sel && _correlationData.fields.length > 0) {
+            sel.innerHTML = _correlationData.fields.map((f, i) =>
+                `<option value="${i}">${esc(f.field_id)} (${esc(f.crop)})</option>`
+            ).join("");
+            renderCorrelationChart();
+        }
+    } catch (err) { console.error("Correlation load failed:", err); }
+}
+
+function renderCorrelationMatrix(data) {
+    const panel = q("#correlationPanel");
+    if (!panel) return;
+
+    panel.innerHTML = `
+        <div class="corr-matrix-grid">
+            ${data.fields.map(f => `
+                <div class="corr-field-card">
+                    <div class="corr-field-header">
+                        <strong>${esc(f.field_id)}</strong>
+                        <span class="crop-badge">${esc(f.crop)}</span>
+                    </div>
+                    <div class="corr-coefficients">
+                        <div class="corr-item">
+                            <span class="corr-pair">NDVI ↔ SMC</span>
+                            <span class="corr-value ${corrClass(f.r_ndvi_smc)}">${f.r_ndvi_smc.toFixed(3)}</span>
+                        </div>
+                        <div class="corr-item">
+                            <span class="corr-pair">NDVI ↔ Temp</span>
+                            <span class="corr-value ${corrClass(f.r_ndvi_temp)}">${f.r_ndvi_temp.toFixed(3)}</span>
+                        </div>
+                        <div class="corr-item">
+                            <span class="corr-pair">SMC ↔ Rain</span>
+                            <span class="corr-value ${corrClass(f.r_smc_rain)}">${f.r_smc_rain.toFixed(3)}</span>
+                        </div>
+                        <div class="corr-item">
+                            <span class="corr-pair">NDVI ↔ Rain</span>
+                            <span class="corr-value ${corrClass(f.r_ndvi_rain)}">${f.r_ndvi_rain.toFixed(3)}</span>
+                        </div>
+                    </div>
+                </div>
+            `).join("")}
+        </div>`;
+}
+
+function corrClass(r) {
+    const abs = Math.abs(r);
+    if (abs > 0.7) return "corr-strong";
+    if (abs > 0.4) return "corr-moderate";
+    return "corr-weak";
+}
+
+function renderCorrelationChart() {
+    if (!_correlationData) return;
+    const idx = parseInt(q("#corrFieldSelect")?.value || "0");
+    const f = _correlationData.fields[idx];
+    if (!f) return;
+
+    const ctx = q("#correlationChart");
+    if (_correlationChart) _correlationChart.destroy();
+
+    // Scatter: NDVI (x) vs SMC (y)
+    const scatterData = f.ndvi.map((v, i) => ({ x: v, y: f.smc[i] }));
+
+    _correlationChart = new Chart(ctx, {
+        type: "scatter",
+        data: {
+            datasets: [{
+                label: `${f.field_id}: NDVI vs SMC (r = ${f.r_ndvi_smc})`,
+                data: scatterData,
+                backgroundColor: "rgba(6,182,212,0.6)",
+                borderColor: "rgba(6,182,212,0.9)",
+                pointRadius: 5,
+                pointHoverRadius: 8,
+            }],
+        },
+        options: {
+            ...CHART_DEFAULTS,
+            scales: {
+                x: {
+                    title: { display: true, text: "NDVI", color: "#94a3b8" },
+                    ticks: { color: "#64748b" },
+                    grid: { color: "rgba(100,116,139,0.1)" },
+                },
+                y: {
+                    title: { display: true, text: "Soil Moisture %", color: "#94a3b8" },
+                    ticks: { color: "#64748b" },
+                    grid: { color: "rgba(100,116,139,0.1)" },
+                },
+            },
+        },
+    });
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  34. ANALYTICS — TREND ANALYSIS
+// ═══════════════════════════════════════════════════════════════
+
+let _trendData = null;
+let _trendChart = null;
+
+async function loadTrendAnalysis() {
+    try {
+        const resp = await fetch(`/api/analytics/trends/${currentSite}`);
+        _trendData = await resp.json();
+        renderTrendChart();
+        renderTrendInsights(_trendData.insights);
+    } catch (err) { console.error("Trend load failed:", err); }
+}
+
+function renderTrendChart() {
+    if (!_trendData) return;
+    const ctx = q("#trendChart");
+    if (_trendChart) _trendChart.destroy();
+
+    const showNDVI = q("#trendNDVI")?.checked ?? true;
+    const showSMC = q("#trendSMC")?.checked ?? true;
+    const showMA = q("#trendMA")?.checked ?? true;
+
+    const datasets = [];
+    if (showNDVI) {
+        datasets.push({
+            label: "NDVI (raw)",
+            data: _trendData.ndvi.raw,
+            borderColor: "#22c55e",
+            backgroundColor: "rgba(34,197,94,0.1)",
+            borderWidth: 1.5,
+            pointRadius: 0,
+            fill: true,
+            yAxisID: "y",
+        });
+        if (showMA) {
+            datasets.push({
+                label: "NDVI MA-7",
+                data: _trendData.ndvi.ma7,
+                borderColor: "#4ade80",
+                borderWidth: 2,
+                borderDash: [6, 3],
+                pointRadius: 0,
+                fill: false,
+                yAxisID: "y",
+            });
+        }
+    }
+    if (showSMC) {
+        datasets.push({
+            label: "SMC % (raw)",
+            data: _trendData.smc.raw,
+            borderColor: "#06b6d4",
+            backgroundColor: "rgba(6,182,212,0.1)",
+            borderWidth: 1.5,
+            pointRadius: 0,
+            fill: true,
+            yAxisID: "y1",
+        });
+        if (showMA) {
+            datasets.push({
+                label: "SMC MA-7",
+                data: _trendData.smc.ma7,
+                borderColor: "#67e8f9",
+                borderWidth: 2,
+                borderDash: [6, 3],
+                pointRadius: 0,
+                fill: false,
+                yAxisID: "y1",
+            });
+        }
+    }
+
+    // Shorten labels to MM-DD
+    const labels = _trendData.days.map(d => d.slice(5));
+
+    _trendChart = new Chart(ctx, {
+        type: "line",
+        data: { labels, datasets },
+        options: {
+            ...CHART_DEFAULTS,
+            interaction: { mode: "index", intersect: false },
+            scales: {
+                x: { ticks: { color: "#64748b", maxTicksLimit: 12 }, grid: { color: "rgba(100,116,139,0.1)" } },
+                y: {
+                    position: "left",
+                    title: { display: true, text: "NDVI", color: "#22c55e" },
+                    ticks: { color: "#22c55e" },
+                    grid: { color: "rgba(100,116,139,0.08)" },
+                },
+                y1: {
+                    position: "right",
+                    title: { display: true, text: "SMC %", color: "#06b6d4" },
+                    ticks: { color: "#06b6d4" },
+                    grid: { drawOnChartArea: false },
+                },
+            },
+        },
+    });
+}
+
+function renderTrendInsights(insights) {
+    const panel = q("#trendInsights");
+    if (!panel || !insights) return;
+    panel.innerHTML = insights.map(ins => `
+        <div class="trend-insight trend-insight-${ins.type}">
+            <span class="insight-icon">${ins.type === 'positive' ? '✅' : ins.type === 'warning' ? '⚠️' : 'ℹ️'}</span>
+            <span>${esc(ins.text)}</span>
+        </div>
+    `).join("");
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  35. ANALYTICS — HEATMAP
+// ═══════════════════════════════════════════════════════════════
+
+let _heatmapData = null;
+
+async function loadHeatmap() {
+    try {
+        const resp = await fetch(`/api/analytics/heatmap/${currentSite}`);
+        _heatmapData = await resp.json();
+
+        // Populate selector
+        const sel = q("#heatmapFieldSelect");
+        if (sel) {
+            sel.innerHTML = _heatmapData.fields.map((f, i) =>
+                `<option value="${i}">${esc(f.field_id)} (${esc(f.crop)})</option>`
+            ).join("");
+        }
+        renderHeatmapGrid();
+    } catch (err) { console.error("Heatmap load failed:", err); }
+}
+
+function renderHeatmapGrid() {
+    if (!_heatmapData) return;
+    const panel = q("#heatmapPanel");
+    if (!panel) return;
+
+    const idx = parseInt(q("#heatmapFieldSelect")?.value || "0");
+    const variable = q("#heatmapVariable")?.value || "ndvi";
+    const f = _heatmapData.fields[idx];
+    if (!f) return;
+
+    const grid = f[variable];
+    if (!grid) return;
+
+    // Color functions
+    function cellColor(val, type) {
+        if (type === "ndvi") {
+            if (val > 0.6) return "#22c55e";
+            if (val > 0.4) return "#4ade80";
+            if (val > 0.3) return "#f59e0b";
+            if (val > 0.2) return "#f97316";
+            return "#ef4444";
+        }
+        if (type === "smc") {
+            if (val > 35) return "#06b6d4";
+            if (val > 25) return "#22d3ee";
+            if (val > 18) return "#f59e0b";
+            if (val > 10) return "#f97316";
+            return "#ef4444";
+        }
+        // risk
+        if (val > 0.6) return "#ef4444";
+        if (val > 0.4) return "#f97316";
+        if (val > 0.25) return "#f59e0b";
+        return "#22c55e";
+    }
+
+    let html = `<div class="heatmap-container">
+        <div class="heatmap-title">${esc(f.field_id)} — ${variable.toUpperCase()} (${f.grid_size}×${f.grid_size})</div>
+        <div class="heatmap-grid" style="grid-template-columns: repeat(${f.grid_size}, 1fr)">`;
+
+    for (let r = 0; r < grid.length; r++) {
+        for (let c = 0; c < grid[r].length; c++) {
+            const val = grid[r][c];
+            const bg = cellColor(val, variable);
+            html += `<div class="heatmap-cell" style="background:${bg}" title="[${r},${c}] = ${val}">
+                <span>${val}</span>
+            </div>`;
+        }
+    }
+
+    html += `</div>
+        <div class="heatmap-legend">
+            <span>Low</span>
+            <div class="heatmap-legend-bar"></div>
+            <span>High</span>
+        </div>
+    </div>`;
+
+    panel.innerHTML = html;
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  36. ANALYTICS — ACTIVITY LOG
+// ═══════════════════════════════════════════════════════════════
+
+async function loadActivityLog() {
+    try {
+        const resp = await fetch(`/api/analytics/activity-log/${currentSite}`);
+        const data = await resp.json();
+        renderActivityLog(data.entries);
+    } catch (err) { console.error("Activity log failed:", err); }
+}
+
+function renderActivityLog(entries) {
+    const panel = q("#activityLogPanel");
+    if (!panel) return;
+
+    const catIcons = {
+        pipeline: "🔄", alert: "🔔", nudge: "📲", model: "🤖",
+        weather: "🌤️", satellite: "🛰️", forecast: "📊",
+        sensor: "📡", export: "📥", system: "⚙️",
+    };
+
+    panel.innerHTML = entries.map(e => `
+        <div class="activity-entry">
+            <span class="activity-icon">${catIcons[e.category] || "📋"}</span>
+            <div class="activity-content">
+                <div class="activity-action">${esc(e.action)}</div>
+                <div class="activity-detail">${esc(e.detail)}</div>
+            </div>
+            <span class="activity-time">${e.timestamp.slice(11, 16)}</span>
+        </div>
+    `).join("");
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  37. RISK — MATRIX & SCORING
+// ═══════════════════════════════════════════════════════════════
+
+let _riskData = null;
+let _riskRadarChart = null;
+
+async function loadRiskMatrix() {
+    try {
+        const resp = await fetch(`/api/analytics/risk-matrix/${currentSite}`);
+        _riskData = await resp.json();
+        renderRiskSummary(_riskData);
+        renderRiskDetail(_riskData);
+
+        // Populate radar select
+        const sel = q("#riskRadarSelect");
+        if (sel) {
+            sel.innerHTML = _riskData.fields.map((f, i) =>
+                `<option value="${i}">${esc(f.field_id)} (${f.risk_level})</option>`
+            ).join("");
+            renderRiskRadar();
+        }
+    } catch (err) { console.error("Risk matrix failed:", err); }
+}
+
+function renderRiskSummary(data) {
+    const panel = q("#riskSummaryPanel");
+    if (!panel) return;
+
+    const s = data.risk_summary;
+    panel.innerHTML = `
+        <div class="risk-overview-grid">
+            <div class="risk-overview-item risk-critical">
+                <span class="risk-count">${s.critical}</span>
+                <span class="risk-label">Critical</span>
+            </div>
+            <div class="risk-overview-item risk-high">
+                <span class="risk-count">${s.high}</span>
+                <span class="risk-label">High</span>
+            </div>
+            <div class="risk-overview-item risk-medium">
+                <span class="risk-count">${s.medium}</span>
+                <span class="risk-label">Medium</span>
+            </div>
+            <div class="risk-overview-item risk-low">
+                <span class="risk-count">${s.low}</span>
+                <span class="risk-label">Low</span>
+            </div>
+        </div>`;
+}
+
+function renderRiskDetail(data) {
+    const panel = q("#riskDetailPanel");
+    if (!panel) return;
+
+    panel.innerHTML = data.fields.map(f => {
+        const factors = Object.entries(f.factors);
+        return `
+            <div class="risk-field-card risk-level-${f.risk_level}">
+                <div class="risk-field-header">
+                    <strong>${esc(f.field_id)}</strong>
+                    <span class="crop-badge">${esc(f.crop)}</span>
+                    <span class="risk-badge risk-${f.risk_level}">${f.risk_level.toUpperCase()} · ${(f.composite_score * 100).toFixed(0)}%</span>
+                </div>
+                <div class="risk-factor-bars">
+                    ${factors.map(([key, v]) => `
+                        <div class="risk-factor-row">
+                            <span class="risk-factor-icon">${v.icon}</span>
+                            <span class="risk-factor-name">${key.replace(/_/g, ' ')}</span>
+                            <div class="risk-factor-bar-bg">
+                                <div class="risk-factor-bar-fill" style="width:${v.score * 100}%;background:${riskBarColor(v.score)}"></div>
+                            </div>
+                            <span class="risk-factor-pct">${(v.score * 100).toFixed(0)}%</span>
+                        </div>
+                    `).join("")}
+                </div>
+                <div class="risk-actions">
+                    ${f.recommended_actions.map(a => `<div class="risk-action-item">→ ${esc(a)}</div>`).join("")}
+                </div>
+            </div>`;
+    }).join("");
+}
+
+function riskBarColor(score) {
+    if (score > 0.6) return "#ef4444";
+    if (score > 0.4) return "#f97316";
+    if (score > 0.25) return "#f59e0b";
+    return "#22c55e";
+}
+
+function renderRiskRadar() {
+    if (!_riskData) return;
+    const idx = parseInt(q("#riskRadarSelect")?.value || "0");
+    const f = _riskData.fields[idx];
+    if (!f) return;
+
+    const ctx = q("#riskRadarChart");
+    if (_riskRadarChart) _riskRadarChart.destroy();
+
+    const factors = Object.entries(f.factors);
+
+    _riskRadarChart = new Chart(ctx, {
+        type: "radar",
+        data: {
+            labels: factors.map(([k]) => k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())),
+            datasets: [{
+                label: `${f.field_id} Risk Profile`,
+                data: factors.map(([, v]) => (v.score * 100).toFixed(0)),
+                backgroundColor: "rgba(239,68,68,0.15)",
+                borderColor: "#ef4444",
+                borderWidth: 2,
+                pointBackgroundColor: factors.map(([, v]) => riskBarColor(v.score)),
+                pointBorderColor: "#fff",
+                pointRadius: 5,
+            }],
+        },
+        options: {
+            ...CHART_DEFAULTS,
+            scales: {
+                r: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: { display: false },
+                    grid: { color: "rgba(100,116,139,0.15)" },
+                    pointLabels: { color: "#94a3b8", font: { size: 11, family: "'Space Grotesk', sans-serif" } },
+                    angleLines: { color: "rgba(100,116,139,0.15)" },
+                },
+            },
+        },
+    });
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  38. RISK — FIELD HEALTH SCORES
+// ═══════════════════════════════════════════════════════════════
+
+async function loadFieldScores() {
+    try {
+        const resp = await fetch(`/api/analytics/field-scores/${currentSite}`);
+        const data = await resp.json();
+        renderFieldScores(data);
+    } catch (err) { console.error("Field scores failed:", err); }
+}
+
+function renderFieldScores(data) {
+    const panel = q("#fieldScoresPanel");
+    if (!panel) return;
+
+    panel.innerHTML = `
+        <div class="scores-site-avg">
+            <span class="scores-avg-label">Site Average</span>
+            <span class="scores-avg-value">${data.site_average}</span>
+        </div>
+        <div class="scores-grid">
+            ${data.fields.map(f => `
+                <div class="score-card">
+                    <div class="score-header">
+                        <strong>${esc(f.field_id)}</strong>
+                        <span class="score-grade grade-${f.grade.replace('+','p')}">${f.grade}</span>
+                    </div>
+                    <div class="score-ring-wrap">
+                        <svg class="score-ring" viewBox="0 0 36 36">
+                            <path class="score-ring-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="rgba(100,116,139,0.15)" stroke-width="3"/>
+                            <path class="score-ring-fill" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="${scoreColor(f.overall_score)}" stroke-width="3" stroke-dasharray="${f.overall_score}, 100" stroke-linecap="round"/>
+                        </svg>
+                        <span class="score-value">${f.overall_score}</span>
+                    </div>
+                    <div class="score-details">
+                        <div class="score-detail-row"><span>🌿 NDVI Health</span><span>${f.health.ndvi}%</span></div>
+                        <div class="score-detail-row"><span>💧 Moisture</span><span>${f.health.moisture}%</span></div>
+                        <div class="score-detail-row"><span>🌱 Growth</span><span>${f.health.growth}%</span></div>
+                        <div class="score-detail-row"><span>📊 Data Quality</span><span>${f.data_quality.composite}%</span></div>
+                    </div>
+                    <div class="score-trend trend-${f.trend}">
+                        ${f.trend === 'improving' ? '📈' : f.trend === 'declining' ? '📉' : '➡️'} ${f.trend}
+                    </div>
+                </div>
+            `).join("")}
+        </div>`;
+}
+
+function scoreColor(score) {
+    if (score >= 80) return "#22c55e";
+    if (score >= 65) return "#f59e0b";
+    return "#ef4444";
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  39. NPU PERFORMANCE MONITOR
+// ═══════════════════════════════════════════════════════════════
+
+let _npuData = null;
+let _npuTimelineChart = null;
+let _npuLatencyChart = null;
+
+async function loadNPUPerformance() {
+    try {
+        const resp = await fetch("/api/analytics/npu-performance");
+        _npuData = await resp.json();
+        renderNPUOverview(_npuData);
+        renderNPUTimeline(_npuData);
+        renderNPUModels(_npuData.models);
+        renderNPULatency(_npuData);
+    } catch (err) { console.error("NPU load failed:", err); }
+}
+
+function renderNPUOverview(data) {
+    const panel = q("#npuOverviewPanel");
+    if (!panel) return;
+
+    panel.innerHTML = `
+        <div class="npu-overview-grid">
+            <div class="npu-stat-card">
+                <div class="npu-stat-icon">⚡</div>
+                <div class="npu-stat-value">${data.tops_current} TOPS</div>
+                <div class="npu-stat-label">Current / ${data.tops_peak} Peak</div>
+                <div class="npu-util-bar">
+                    <div class="npu-util-fill" style="width:${(data.tops_current / data.tops_peak * 100).toFixed(0)}%"></div>
+                </div>
+            </div>
+            <div class="npu-stat-card">
+                <div class="npu-stat-icon">🎯</div>
+                <div class="npu-stat-value">${data.device}</div>
+                <div class="npu-stat-label">${data.npu_arch}</div>
+            </div>
+            <div class="npu-stat-card">
+                <div class="npu-stat-icon">🧠</div>
+                <div class="npu-stat-value">${data.system.memory_allocated_mb} MB</div>
+                <div class="npu-stat-label">Memory (peak ${data.system.memory_peak_mb} MB)</div>
+            </div>
+            <div class="npu-stat-card">
+                <div class="npu-stat-icon">📦</div>
+                <div class="npu-stat-value">${data.system.execution_provider}</div>
+                <div class="npu-stat-label">ONNX Opset ${data.system.onnx_opset}</div>
+            </div>
+        </div>`;
+}
+
+function renderNPUTimeline(data) {
+    const ctx = q("#npuTimelineChart");
+    if (!ctx) return;
+    if (_npuTimelineChart) _npuTimelineChart.destroy();
+
+    const tl = data.timeline;
+    _npuTimelineChart = new Chart(ctx, {
+        type: "line",
+        data: {
+            labels: tl.map(t => t.timestamp),
+            datasets: [
+                {
+                    label: "Utilization %",
+                    data: tl.map(t => t.utilization),
+                    borderColor: "#a855f7",
+                    backgroundColor: "rgba(168,85,247,0.1)",
+                    fill: true,
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    yAxisID: "y",
+                },
+                {
+                    label: "Power (W)",
+                    data: tl.map(t => t.power_watts),
+                    borderColor: "#f59e0b",
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    borderDash: [4, 2],
+                    yAxisID: "y1",
+                },
+                {
+                    label: "Temp (°C)",
+                    data: tl.map(t => t.temp_c),
+                    borderColor: "#ef4444",
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    borderDash: [2, 2],
+                    yAxisID: "y1",
+                },
+            ],
+        },
+        options: {
+            ...CHART_DEFAULTS,
+            interaction: { mode: "index", intersect: false },
+            scales: {
+                x: { ticks: { color: "#64748b", maxTicksLimit: 12 }, grid: { color: "rgba(100,116,139,0.08)" } },
+                y: {
+                    position: "left",
+                    title: { display: true, text: "Utilization %", color: "#a855f7" },
+                    ticks: { color: "#a855f7" },
+                    grid: { color: "rgba(100,116,139,0.08)" },
+                    max: 100,
+                },
+                y1: {
+                    position: "right",
+                    title: { display: true, text: "Power / Temp", color: "#f59e0b" },
+                    ticks: { color: "#f59e0b" },
+                    grid: { drawOnChartArea: false },
+                },
+            },
+        },
+    });
+}
+
+function renderNPUModels(models) {
+    const panel = q("#npuModelsPanel");
+    if (!panel) return;
+
+    panel.innerHTML = `<div class="npu-models-grid">
+        ${Object.entries(models).map(([key, m]) => `
+            <div class="npu-model-card">
+                <div class="npu-model-header">
+                    <span class="npu-model-status" style="background:${m.status === 'active' ? '#22c55e' : '#ef4444'}"></span>
+                    <strong>${esc(m.name)}</strong>
+                </div>
+                <div class="npu-model-accuracy">${esc(m.accuracy)}</div>
+                <div class="npu-model-metrics">
+                    <div class="npu-metric-row"><span>Avg Latency</span><span class="mono">${m.avg_latency_ms} ms</span></div>
+                    <div class="npu-metric-row"><span>P95 Latency</span><span class="mono">${m.p95_latency_ms} ms</span></div>
+                    <div class="npu-metric-row"><span>Throughput</span><span class="mono">${m.throughput} inf/s</span></div>
+                    <div class="npu-metric-row"><span>Total Inferences</span><span class="mono">${m.total_inferences.toLocaleString()}</span></div>
+                    <div class="npu-metric-row"><span>Quantization</span><span class="mono">${m.quantization}</span></div>
+                    <div class="npu-metric-row"><span>Input Shape</span><span class="mono">${m.input_shape}</span></div>
+                    <div class="npu-metric-row"><span>Parameters</span><span class="mono">${m.params_m}</span></div>
+                    <div class="npu-metric-row"><span>FLOPs</span><span class="mono">${m.flops_g}</span></div>
+                    <div class="npu-metric-row"><span>Last Retrained</span><span class="mono">${m.last_retrained}</span></div>
+                </div>
+            </div>
+        `).join("")}
+    </div>`;
+}
+
+function renderNPULatency(data) {
+    const ctx = q("#npuLatencyChart");
+    if (!ctx) return;
+    if (_npuLatencyChart) _npuLatencyChart.destroy();
+
+    const tl = data.timeline;
+    _npuLatencyChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+            labels: tl.map(t => t.timestamp),
+            datasets: [{
+                label: "Latency (ms)",
+                data: tl.map(t => t.latency_ms),
+                backgroundColor: tl.map(t => t.latency_ms > 15 ? "rgba(239,68,68,0.6)" : t.latency_ms > 8 ? "rgba(245,158,11,0.6)" : "rgba(34,197,94,0.6)"),
+                borderRadius: 4,
+            }],
+        },
+        options: {
+            ...CHART_DEFAULTS,
+            scales: {
+                x: { ticks: { color: "#64748b", maxTicksLimit: 12 }, grid: { color: "rgba(100,116,139,0.08)" } },
+                y: {
+                    title: { display: true, text: "Latency (ms)", color: "#94a3b8" },
+                    ticks: { color: "#64748b" },
+                    grid: { color: "rgba(100,116,139,0.1)" },
+                },
+            },
+        },
+    });
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  40. STARTUP TOASTS & ENTRY ENHANCEMENTS
 // ═══════════════════════════════════════════════════════════════
 
 // Wrap enterDashboard to add toast notifications and health check

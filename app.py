@@ -1495,6 +1495,488 @@ def live_telemetry(site_key):
 
 
 # ═══════════════════════════════════════════════════════════════
+#  Correlation Analysis
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/analytics/correlation/<site_key>")
+def correlation_analysis(site_key):
+    """Cross-correlation analysis between NDVI, SMC, and weather for all fields."""
+    import random, math
+    site = PILOT_SITES.get(site_key)
+    if not site:
+        return jsonify({"error": "Site not found"}), 404
+
+    fields = site.get("fields", [])
+    correlations = []
+    for f in fields:
+        fid = f["field_id"]
+        # Generate synthetic correlated time-series
+        n_points = 30
+        days = [(datetime.utcnow() - timedelta(days=30-i)).strftime("%Y-%m-%d") for i in range(n_points)]
+        base_ndvi = random.uniform(0.35, 0.65)
+        base_smc = random.uniform(22, 38)
+        base_temp = random.uniform(22, 32)
+        base_rain = random.uniform(0, 5)
+
+        ndvi_series = []
+        smc_series = []
+        temp_series = []
+        rain_series = []
+        for i in range(n_points):
+            rain = max(0, base_rain + random.gauss(0, 3))
+            smc = max(8, min(50, base_smc + rain * 0.8 + random.gauss(0, 2)))
+            ndvi = max(0.1, min(0.9, base_ndvi + (smc - 25) * 0.008 + random.gauss(0, 0.03)))
+            temp = base_temp + math.sin(i * 0.3) * 3 + random.gauss(0, 1.5)
+            ndvi_series.append(round(ndvi, 3))
+            smc_series.append(round(smc, 1))
+            temp_series.append(round(temp, 1))
+            rain_series.append(round(rain, 1))
+            base_smc = smc * 0.95  # decay
+            base_ndvi = ndvi
+
+        # Compute simple correlation coefficients
+        def pearson(x, y):
+            n = len(x)
+            mx, my = sum(x)/n, sum(y)/n
+            num = sum((a-mx)*(b-my) for a,b in zip(x,y))
+            den = (sum((a-mx)**2 for a in x) * sum((b-my)**2 for b in y)) ** 0.5
+            return round(num / den, 3) if den > 0 else 0
+
+        correlations.append({
+            "field_id": fid,
+            "crop": f.get("crop", "Unknown"),
+            "days": days,
+            "ndvi": ndvi_series,
+            "smc": smc_series,
+            "temperature": temp_series,
+            "rainfall": rain_series,
+            "r_ndvi_smc": pearson(ndvi_series, smc_series),
+            "r_ndvi_temp": pearson(ndvi_series, temp_series),
+            "r_smc_rain": pearson(smc_series, rain_series),
+            "r_ndvi_rain": pearson(ndvi_series, rain_series),
+        })
+
+    return jsonify({
+        "site": site["short_name"],
+        "fields": correlations,
+        "generated_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Risk Matrix
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/analytics/risk-matrix/<site_key>")
+def risk_matrix(site_key):
+    """Multi-factor risk assessment matrix per field."""
+    import random
+    site = PILOT_SITES.get(site_key)
+    if not site:
+        return jsonify({"error": "Site not found"}), 404
+
+    fields = site.get("fields", [])
+    matrix = []
+    for f in fields:
+        water_stress = round(random.uniform(0.1, 0.9), 2)
+        pest_risk = round(random.uniform(0.05, 0.85), 2)
+        nutrient_def = round(random.uniform(0.1, 0.7), 2)
+        weather_risk = round(random.uniform(0.1, 0.6), 2)
+        market_risk = round(random.uniform(0.15, 0.5), 2)
+
+        composite = round(water_stress * 0.3 + pest_risk * 0.25 + nutrient_def * 0.2 + weather_risk * 0.15 + market_risk * 0.1, 3)
+        level = "critical" if composite > 0.6 else "high" if composite > 0.45 else "medium" if composite > 0.3 else "low"
+
+        matrix.append({
+            "field_id": f["field_id"],
+            "crop": f.get("crop", "Unknown"),
+            "area_ha": f.get("area_ha", 1.0),
+            "factors": {
+                "water_stress": {"score": water_stress, "weight": 0.30, "icon": "💧"},
+                "pest_pressure": {"score": pest_risk, "weight": 0.25, "icon": "🐛"},
+                "nutrient_deficit": {"score": nutrient_def, "weight": 0.20, "icon": "🧪"},
+                "weather_exposure": {"score": weather_risk, "weight": 0.15, "icon": "⛈️"},
+                "market_volatility": {"score": market_risk, "weight": 0.10, "icon": "📉"},
+            },
+            "composite_score": composite,
+            "risk_level": level,
+            "recommended_actions": _risk_actions(level, water_stress, pest_risk),
+        })
+
+    # Sort by composite score descending
+    matrix.sort(key=lambda x: x["composite_score"], reverse=True)
+
+    return jsonify({
+        "site": site["short_name"],
+        "fields": matrix,
+        "risk_summary": {
+            "critical": sum(1 for m in matrix if m["risk_level"] == "critical"),
+            "high": sum(1 for m in matrix if m["risk_level"] == "high"),
+            "medium": sum(1 for m in matrix if m["risk_level"] == "medium"),
+            "low": sum(1 for m in matrix if m["risk_level"] == "low"),
+        },
+        "generated_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+
+
+def _risk_actions(level, water, pest):
+    actions = []
+    if water > 0.6:
+        actions.append("Activate drip irrigation immediately")
+    if water > 0.4:
+        actions.append("Schedule supplemental irrigation within 48h")
+    if pest > 0.6:
+        actions.append("Deploy IPM scouts — high pest anomaly")
+    if pest > 0.3:
+        actions.append("Apply preventive foliar spray")
+    if level == "critical":
+        actions.append("Escalate to district agronomist")
+    if level in ("critical", "high"):
+        actions.append("Increase monitoring frequency to daily")
+    if not actions:
+        actions.append("Continue standard monitoring protocol")
+    return actions
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Field Scoring (Data Quality + Health)
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/analytics/field-scores/<site_key>")
+def field_scores(site_key):
+    """Composite health + data quality score per field."""
+    import random
+    site = PILOT_SITES.get(site_key)
+    if not site:
+        return jsonify({"error": "Site not found"}), 404
+
+    fields = site.get("fields", [])
+    scores = []
+    for f in fields:
+        ndvi_health = round(random.uniform(55, 98), 1)
+        moisture_health = round(random.uniform(50, 95), 1)
+        growth_stage_health = round(random.uniform(60, 99), 1)
+        data_completeness = round(random.uniform(70, 100), 1)
+        sensor_coverage = round(random.uniform(65, 100), 1)
+        temporal_density = round(random.uniform(60, 100), 1)
+
+        health_score = round((ndvi_health + moisture_health + growth_stage_health) / 3, 1)
+        data_quality = round((data_completeness + sensor_coverage + temporal_density) / 3, 1)
+        overall = round(health_score * 0.6 + data_quality * 0.4, 1)
+
+        scores.append({
+            "field_id": f["field_id"],
+            "crop": f.get("crop", "Unknown"),
+            "area_ha": f.get("area_ha", 1.0),
+            "health": {
+                "ndvi": ndvi_health,
+                "moisture": moisture_health,
+                "growth": growth_stage_health,
+                "composite": health_score,
+            },
+            "data_quality": {
+                "completeness": data_completeness,
+                "sensor_coverage": sensor_coverage,
+                "temporal_density": temporal_density,
+                "composite": data_quality,
+            },
+            "overall_score": overall,
+            "grade": "A+" if overall >= 90 else "A" if overall >= 80 else "B" if overall >= 70 else "C" if overall >= 60 else "D",
+            "trend": random.choice(["improving", "stable", "declining"]),
+        })
+
+    scores.sort(key=lambda x: x["overall_score"], reverse=True)
+
+    return jsonify({
+        "site": site["short_name"],
+        "fields": scores,
+        "site_average": round(sum(s["overall_score"] for s in scores) / len(scores), 1) if scores else 0,
+        "generated_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Trend Analysis (Moving Averages)
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/analytics/trends/<site_key>")
+def trend_analysis(site_key):
+    """Multi-variable trend analysis with moving averages and derivatives."""
+    import random, math
+    site = PILOT_SITES.get(site_key)
+    if not site:
+        return jsonify({"error": "Site not found"}), 404
+
+    n_points = 60
+    now = datetime.utcnow()
+    days = [(now - timedelta(days=n_points - i)).strftime("%Y-%m-%d") for i in range(n_points)]
+
+    # Generate site-level aggregate time series
+    base = random.uniform(0.35, 0.55)
+    ndvi_raw = []
+    smc_raw = []
+    et0_raw = []
+    for i in range(n_points):
+        seasonal = math.sin((i / n_points) * math.pi * 2) * 0.12
+        ndvi_raw.append(round(base + seasonal + random.gauss(0, 0.03), 3))
+        smc_raw.append(round(25 + seasonal * 80 + random.gauss(0, 3), 1))
+        et0_raw.append(round(3.5 + math.sin(i * 0.15) * 1.5 + random.gauss(0, 0.4), 2))
+
+    def moving_avg(data, window):
+        result = []
+        for i in range(len(data)):
+            start = max(0, i - window + 1)
+            result.append(round(sum(data[start:i+1]) / (i - start + 1), 3))
+        return result
+
+    def derivative(data):
+        return [0] + [round(data[i] - data[i-1], 4) for i in range(1, len(data))]
+
+    return jsonify({
+        "site": site["short_name"],
+        "days": days,
+        "ndvi": {
+            "raw": ndvi_raw,
+            "ma7": moving_avg(ndvi_raw, 7),
+            "ma14": moving_avg(ndvi_raw, 14),
+            "derivative": derivative(ndvi_raw),
+        },
+        "smc": {
+            "raw": smc_raw,
+            "ma7": moving_avg(smc_raw, 7),
+            "ma14": moving_avg(smc_raw, 14),
+            "derivative": derivative(smc_raw),
+        },
+        "et0": {
+            "raw": et0_raw,
+            "ma7": moving_avg(et0_raw, 7),
+        },
+        "insights": _generate_trend_insights(ndvi_raw, smc_raw),
+        "generated_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+
+
+def _generate_trend_insights(ndvi, smc):
+    insights = []
+    # Compare last 7 days vs previous 7 days
+    recent_ndvi = sum(ndvi[-7:]) / 7
+    prev_ndvi = sum(ndvi[-14:-7]) / 7
+    ndvi_change = ((recent_ndvi - prev_ndvi) / prev_ndvi) * 100 if prev_ndvi else 0
+
+    recent_smc = sum(smc[-7:]) / 7
+    prev_smc = sum(smc[-14:-7]) / 7
+    smc_change = ((recent_smc - prev_smc) / prev_smc) * 100 if prev_smc else 0
+
+    if ndvi_change > 5:
+        insights.append({"type": "positive", "text": f"NDVI up {ndvi_change:.1f}% (7d) — vegetation vigor improving"})
+    elif ndvi_change < -5:
+        insights.append({"type": "warning", "text": f"NDVI down {abs(ndvi_change):.1f}% (7d) — vegetation stress detected"})
+    else:
+        insights.append({"type": "neutral", "text": f"NDVI stable ({ndvi_change:+.1f}%) — normal growth trajectory"})
+
+    if smc_change < -10:
+        insights.append({"type": "warning", "text": f"Soil moisture declining {abs(smc_change):.1f}% — consider irrigation"})
+    elif smc_change > 10:
+        insights.append({"type": "positive", "text": f"Soil moisture rising {smc_change:.1f}% — recent rainfall absorbed"})
+
+    insights.append({"type": "info", "text": f"Current NDVI: {ndvi[-1]:.3f} | SMC: {smc[-1]:.1f}%"})
+    return insights
+
+
+# ═══════════════════════════════════════════════════════════════
+#  NPU Performance Monitor
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/analytics/npu-performance")
+def npu_performance():
+    """Detailed NPU/model performance metrics and history."""
+    import random
+    now = datetime.utcnow()
+    n_hours = 24
+
+    timeline = []
+    for h in range(n_hours):
+        t = now - timedelta(hours=n_hours - h)
+        timeline.append({
+            "timestamp": t.strftime("%H:%M"),
+            "utilization": round(random.uniform(8, 65), 1),
+            "power_watts": round(random.uniform(8, 28), 1),
+            "temp_c": round(random.uniform(38, 75), 1),
+            "inferences_per_min": random.randint(5, 45),
+            "latency_ms": round(random.uniform(2.1, 22), 1),
+        })
+
+    models_perf = {
+        "smc_cnn": {
+            "name": "Soil Moisture CNN",
+            "accuracy": "R² = 0.962",
+            "avg_latency_ms": round(random.uniform(3.5, 8.2), 1),
+            "p95_latency_ms": round(random.uniform(8, 18), 1),
+            "throughput": round(random.uniform(12, 35), 1),
+            "total_inferences": random.randint(5000, 25000),
+            "last_retrained": (now - timedelta(days=random.randint(3, 30))).strftime("%Y-%m-%d"),
+            "quantization": "INT8 PTQ",
+            "status": "active",
+            "input_shape": "[1, 5, 5, 32, 32]",
+            "params_m": "2.4M",
+            "flops_g": "1.8G",
+        },
+        "pest_detector": {
+            "name": "Pest Anomaly Detector",
+            "accuracy": "F1 = 0.937",
+            "avg_latency_ms": round(random.uniform(1.5, 5), 1),
+            "p95_latency_ms": round(random.uniform(4, 12), 1),
+            "throughput": round(random.uniform(20, 60), 1),
+            "total_inferences": random.randint(8000, 40000),
+            "last_retrained": (now - timedelta(days=random.randint(5, 45))).strftime("%Y-%m-%d"),
+            "quantization": "INT8 PTQ",
+            "status": "active",
+            "input_shape": "[1, 6]",
+            "params_m": "0.3M",
+            "flops_g": "0.1G",
+        },
+        "yield_forecaster": {
+            "name": "Yield Forecaster",
+            "accuracy": "R² = 0.914",
+            "avg_latency_ms": round(random.uniform(2, 6), 1),
+            "p95_latency_ms": round(random.uniform(5, 14), 1),
+            "throughput": round(random.uniform(15, 45), 1),
+            "total_inferences": random.randint(3000, 15000),
+            "last_retrained": (now - timedelta(days=random.randint(7, 60))).strftime("%Y-%m-%d"),
+            "quantization": "INT8 PTQ",
+            "status": "active",
+            "input_shape": "[1, 12]",
+            "params_m": "1.1M",
+            "flops_g": "0.5G",
+        },
+    }
+
+    return jsonify({
+        "device": ONNX_CONFIG["target_device"],
+        "npu_arch": "XDNA™ 2 (Ryzen AI)",
+        "tops_peak": 50,
+        "tops_current": round(random.uniform(15, 45), 1),
+        "timeline": timeline,
+        "models": models_perf,
+        "system": {
+            "onnx_opset": ONNX_CONFIG["opset"],
+            "execution_provider": "VitisAIExecutionProvider",
+            "fallback": "CPUExecutionProvider",
+            "memory_allocated_mb": round(random.uniform(120, 380), 1),
+            "memory_peak_mb": round(random.uniform(400, 600), 1),
+        },
+        "generated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+    })
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Heatmap Data (Field Grid)
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/analytics/heatmap/<site_key>")
+def field_heatmap(site_key):
+    """Grid-based heatmap data for NDVI, SMC, and risk across the site."""
+    import random
+    site = PILOT_SITES.get(site_key)
+    if not site:
+        return jsonify({"error": "Site not found"}), 404
+
+    fields = site.get("fields", [])
+    grid_size = 8  # 8x8 grid per field
+    heatmaps = []
+
+    for f in fields:
+        ndvi_grid = []
+        smc_grid = []
+        risk_grid = []
+        base_ndvi = random.uniform(0.3, 0.7)
+        base_smc = random.uniform(18, 40)
+
+        for r in range(grid_size):
+            ndvi_row = []
+            smc_row = []
+            risk_row = []
+            for c in range(grid_size):
+                ndvi = max(0, min(1, base_ndvi + random.gauss(0, 0.08)))
+                smc = max(5, min(50, base_smc + random.gauss(0, 5)))
+                risk = round(max(0, min(1, (1 - ndvi) * 0.5 + (1 - smc / 50) * 0.3 + random.uniform(0, 0.2))), 2)
+                ndvi_row.append(round(ndvi, 3))
+                smc_row.append(round(smc, 1))
+                risk_row.append(risk)
+            ndvi_grid.append(ndvi_row)
+            smc_grid.append(smc_row)
+            risk_grid.append(risk_row)
+
+        heatmaps.append({
+            "field_id": f["field_id"],
+            "crop": f.get("crop", "Unknown"),
+            "grid_size": grid_size,
+            "ndvi": ndvi_grid,
+            "smc": smc_grid,
+            "risk": risk_grid,
+        })
+
+    return jsonify({
+        "site": site["short_name"],
+        "fields": heatmaps,
+        "generated_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Activity Log
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/analytics/activity-log/<site_key>")
+def activity_log(site_key):
+    """Recent platform activity log for a site."""
+    import random
+    site = PILOT_SITES.get(site_key)
+    if not site:
+        return jsonify({"error": "Site not found"}), 404
+
+    now = datetime.utcnow()
+    actions = [
+        ("Pipeline executed", "pipeline", "Spectral indices computed for {n} fields"),
+        ("Anomaly detected", "alert", "NDVI drop >{d}% on {f}"),
+        ("Nudge sent", "nudge", "Irrigation advisory dispatched via SMS"),
+        ("Model inference", "model", "SMC prediction completed in {t}ms"),
+        ("Weather updated", "weather", "7-day forecast refreshed from Open-Meteo"),
+        ("Satellite pass", "satellite", "Sentinel-2B captured tile at {lat}°N"),
+        ("Yield forecast", "forecast", "Updated yield estimate for {f}"),
+        ("Probe reading", "sensor", "Soil probe SP-{p} reported {m}% moisture"),
+        ("Data export", "export", "CSV exported with {r} records"),
+        ("Health check", "system", "All systems operational — uptime {u}h"),
+    ]
+
+    log = []
+    for i in range(25):
+        action = random.choice(actions)
+        t = now - timedelta(minutes=random.randint(1, 1440))
+        log.append({
+            "timestamp": t.strftime("%Y-%m-%d %H:%M:%S"),
+            "action": action[0],
+            "category": action[1],
+            "detail": action[2].format(
+                n=random.randint(3, 8), d=random.randint(5, 20),
+                f=random.choice(site.get("fields", [{"field_id": "F-001"}]))["field_id"],
+                t=round(random.uniform(3, 18), 1),
+                lat=round(site["lat"] + random.uniform(-0.1, 0.1), 2),
+                p=random.randint(1, 20), m=round(random.uniform(15, 42), 1),
+                r=random.randint(50, 500), u=random.randint(24, 720)
+            ),
+        })
+
+    log.sort(key=lambda x: x["timestamp"], reverse=True)
+
+    return jsonify({
+        "site": site["short_name"],
+        "entries": log,
+        "generated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+    })
+
+
+# ═══════════════════════════════════════════════════════════════
 #  Run
 # ═══════════════════════════════════════════════════════════════
 
@@ -1504,5 +1986,5 @@ if __name__ == "__main__":
     print(f"  [*] {APP_DESCRIPTION}")
     print(f"  [*] Pilot sites: {', '.join(s['short_name'] for s in PILOT_SITES.values())}")
     print(f"  [*] Target hardware: {ONNX_CONFIG['target_device']}")
-    print(f"  [*] API endpoints: 25+\n")
+    print(f"  [*] API endpoints: 35+\n")
     app.run(host="0.0.0.0", port=port, debug=DEBUG_MODE)
