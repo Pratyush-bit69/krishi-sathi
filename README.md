@@ -1,4 +1,4 @@
-# 🛰️ Krishi-Sathi — AI Precision Agriculture Platform
+# Krishi-Sathi — AI Precision Agriculture Platform
 
 > **Satellite to Field Nudges for Smallholder Farmers**  
 > Built for the AMD Pervasive AI Developer Contest
@@ -11,7 +11,7 @@
 
 ---
 
-## 🌾 What is Krishi-Sathi?
+## What is Krishi-Sathi?
 
 **Krishi-Sathi** (Farmer's Companion) is an AI-first precision agriculture SaaS platform that bridges the gap between satellite imagery and actionable intelligence for India's 38M+ smallholder farmers.
 
@@ -19,32 +19,32 @@ The platform processes **Sentinel-2 multispectral imagery** through a pipeline o
 
 ---
 
-## ✨ Key Features
+## Key Features
 
 | Feature | Description |
 |---------|-------------|
-| 🌍 **3D Interactive Globe** | Three.js globe with 6 pilot site markers, satellite orbit trails, connection arcs, starfield, and zone-level agricultural analytics |
-| 🧑‍🌾 **Farmer View** | Simplified dashboard with health score ring, crop advisory, today's actions, weather, water balance, crop timeline, live telemetry, and alert digest |
-| 📊 **Manager View** | Detailed analytics with NDVI/NDWI charts, soil moisture, anomaly detection, yield forecasts, and Leaflet field map |
-| 🧬 **Crop Advisory** | Growth-stage-aware recommendations based on crop phenology models (Wheat, Rice, Sorghum, Cotton) |
-| 🤖 **AI Model Accuracy** | Live model performance display — SMC CNN (96.2% R²), Pest Detector (93.7% F1), Yield Forecaster (91.4% R²) |
-| 💧 **Water Balance** | Rainfall vs ETc vs irrigation demand calculator with daily balance tracking |
-| 📅 **Crop Phenology Timeline** | Visual crop stage timeline with Kc values, progress bars, and estimated harvest dates |
-| 📡 **Live Edge Hub Telemetry** | Real-time NPU utilization, soil probe readings, hub metrics, next satellite pass |
-| 🔔 **Alert Digest** | Executive summary of critical NDVI declines, low moisture, and pest anomalies |
-| 📊 **Site Comparison** | Side-by-side comparison of any two pilot sites across all metrics |
-| ⌨️ **Command Palette** | Ctrl+K quick navigation with search, keyboard shortcuts (F/M/G/E), and toast notifications |
-| 📥 **CSV Data Export** | One-click download of field data, indices, moisture, yield, and risk levels |
-| ⚙️ **Platform Statistics** | Live counts of observations, anomalies, nudges, forecasts across all sites |
-| 💧 **Irrigation Nudges** | Multilingual SMS/WhatsApp nudges in English, Hindi, Punjabi, Kannada, Telugu |
-| 🛰️ **Satellite Search** | Live STAC API integration with Copernicus Data Space for Sentinel-2 & Sentinel-1 imagery |
-| 🌤️ **Weather Integration** | Open-Meteo API for 7-day forecasts, ET₀, and rainfall tracking |
-| ⚡ **AMD Ryzen AI NPU** | ONNX export pipeline with INT8 PTQ for VitisAI Execution Provider |
-| 🦶 **Premium Footer** | Tech stack showcase, data sources, keyboard shortcut hints, live system health |
+| **3D Interactive Globe** | Three.js globe with 6 pilot site markers, satellite orbit trails, connection arcs, starfield, and zone-level agricultural analytics |
+| **Farmer View** | Simplified dashboard with health score ring, crop advisory, today's actions, weather, water balance, crop timeline, live telemetry, and alert digest |
+| **Manager View** | Detailed analytics with NDVI/NDWI charts, soil moisture, anomaly detection, yield forecasts, and Leaflet field map |
+| **Crop Advisory** | Growth-stage-aware recommendations based on crop phenology models (Wheat, Rice, Sorghum, Cotton) |
+| **AI Model Accuracy** | Live model performance display — SMC CNN (96.2% R²), Pest Detector (93.7% F1), Yield Forecaster (91.4% R²) |
+| **Water Balance** | Rainfall vs ETc vs irrigation demand calculator with daily balance tracking |
+| **Crop Phenology Timeline** | Visual crop stage timeline with Kc values, progress bars, and estimated harvest dates |
+| **Live Edge Hub Telemetry** | Real-time NPU utilization, soil probe readings, hub metrics, next satellite pass |
+| **Alert Digest** | Executive summary of critical NDVI declines, low moisture, and pest anomalies |
+| **Site Comparison** | Side-by-side comparison of any two pilot sites across all metrics |
+| **Command Palette** | Ctrl+K quick navigation with search, keyboard shortcuts (F/M/G/E), and toast notifications |
+| **CSV Data Export** | One-click download of field data, indices, moisture, yield, and risk levels |
+| **Platform Statistics** | Live counts of observations, anomalies, nudges, forecasts across all sites |
+| **Irrigation Nudges** | Multilingual SMS/WhatsApp nudges in English, Hindi, Punjabi, Kannada, Telugu |
+| **Satellite Search** | Live STAC API integration with Copernicus Data Space for Sentinel-2 & Sentinel-1 imagery |
+| **Weather Integration** | Open-Meteo API for 7-day forecasts, ET₀, and rainfall tracking |
+| **AMD Ryzen AI NPU** | ONNX export pipeline with INT8 PTQ for VitisAI Execution Provider |
+| **Premium Footer** | Tech stack showcase, data sources, keyboard shortcut hints, live system health |
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌──────────────────────────────────────────────┐
@@ -85,7 +85,7 @@ The platform processes **Sentinel-2 multispectral imagery** through a pipeline o
 
 ---
 
-## 🗺️ Pilot Sites (6)
+## Pilot Sites (6)
 
 | # | Site | State | Agro-Zone | Crops |
 |---|------|-------|-----------|-------|
@@ -98,7 +98,7 @@ The platform processes **Sentinel-2 multispectral imagery** through a pipeline o
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Python 3.10+
@@ -122,7 +122,7 @@ Open **http://localhost:5000** in your browser.
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 ├── app.py              # Flask server (25+ API endpoints)
@@ -140,7 +140,7 @@ Open **http://localhost:5000** in your browser.
 
 ---
 
-## 🧠 AI Models
+## AI Models
 
 ### 1. Soil Moisture CNN
 - **Architecture**: 2D Conv + Temporal Encoder (GRU)
@@ -163,7 +163,7 @@ Open **http://localhost:5000** in your browser.
 
 ---
 
-## 🔧 AMD Ryzen AI Integration
+## AMD Ryzen AI Integration
 
 ```python
 # ONNX Runtime with Ryzen AI NPU
@@ -181,7 +181,7 @@ session = ort.InferenceSession("model_int8.onnx", providers=providers)
 
 ---
 
-## 🌐 APIs & Endpoints
+## APIs & Endpoints
 
 ### External APIs
 - **Copernicus Data Space** — Sentinel-2 L2A / Sentinel-1 GRD via STAC API
@@ -204,7 +204,7 @@ session = ort.InferenceSession("model_int8.onnx", providers=providers)
 
 ---
 
-## 📊 Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
@@ -217,13 +217,13 @@ session = ort.InferenceSession("model_int8.onnx", providers=providers)
 
 ---
 
-## 📜 License
+## License
 
 MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
 <p align="center">
-  <strong>🌱 Krishi-Sathi — From Satellite Orbit to Farmer's Field 🛰️</strong><br>
-  <em>Built with ❤️ for the AMD Pervasive AI Developer Contest</em>
+  <strong>Krishi-Sathi — From Satellite Orbit to Farmer's Field</strong><br>
+  <em>Built for the AMD Pervasive AI Developer Contest</em>
 </p>
