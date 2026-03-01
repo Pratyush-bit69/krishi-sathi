@@ -313,8 +313,8 @@ NUDGE_TEMPLATES = {
         "pa": "ਖੇਤ {field}: ਮਿੱਟੀ ਵਿੱਚ ਨਮੀ ਕਾਫ਼ੀ — ਇਸ ਹਫ਼ਤੇ ਸਿੰਚਾਈ ਨਾ ਕਰੋ। ਬੱਚਤ: ~{savings}L ਪਾਣੀ।",
     },
     "pest_alert": {
-        "en": "⚠️ Field {field}: Spectral anomaly detected in {zone}. Possible pest/disease. Inspect and send photo via WhatsApp.",
-        "hi": "⚠️ खेत {field}: {zone} में असामान्यता। कीट/रोग संभव। जांचें और WhatsApp पर फोटो भेजें।",
+        "en": " Field {field}: Spectral anomaly detected in {zone}. Possible pest/disease. Inspect and send photo via WhatsApp.",
+        "hi": " खेत {field}: {zone} में असामान्यता। कीट/रोग संभव। जांचें और WhatsApp पर फोटो भेजें।",
     },
     "yield_forecast": {
         "en": "Field {field}: Estimated yield {yield_val} ± {uncertainty} tonnes/ha. {risk_note}",
