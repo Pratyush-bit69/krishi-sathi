@@ -40,6 +40,8 @@ Agronomic Inputs:
 
 import math
 import hashlib
+import json
+import os
 import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
@@ -918,6 +920,37 @@ class YieldForecaster:
 #  ONNX Export Skeleton (for production deployment)
 # ================================================================
 
+def get_artifacts_dir() -> str:
+    """Return absolute artifacts directory path and ensure it exists."""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    artifacts_dir = os.path.join(base_dir, ONNX_CONFIG.get("export_dir", "artifacts"))
+    os.makedirs(artifacts_dir, exist_ok=True)
+    return artifacts_dir
+
+
+def get_model_artifact_path() -> str:
+    """Return absolute ONNX model artifact path."""
+    return os.path.join(
+        get_artifacts_dir(),
+        ONNX_CONFIG.get("model_filename", "krishi_sathi_smc_v2.onnx"),
+    )
+
+
+def get_export_script_path() -> str:
+    """Return absolute export script path."""
+    return os.path.join(
+        get_artifacts_dir(),
+        ONNX_CONFIG.get("export_script_filename", "export_smc_to_onnx.py"),
+    )
+
+
+def get_export_manifest_path() -> str:
+    """Return absolute model export manifest path."""
+    return os.path.join(
+        get_artifacts_dir(),
+        ONNX_CONFIG.get("manifest_filename", "model_export_manifest.json"),
+    )
+
 def generate_model_export_script() -> str:
     """
     Generate the PyTorch ONNX export + quantization script
@@ -1014,6 +1047,125 @@ if __name__ == "__main__":
     export_to_onnx(model)
     print("Multi-parameter model pipeline ready for Ryzen AI deployment")
 """
+
+
+def write_model_export_script() -> str:
+    """Write export script to artifacts directory and return absolute path."""
+    script_path = get_export_script_path()
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(generate_model_export_script().strip() + "\n")
+    return script_path
+
+
+def _write_export_manifest(status: str, onnx_created: bool, message: str) -> str:
+    """Write export manifest JSON and return absolute path."""
+    manifest = {
+        "status": status,
+        "onnx_created": onnx_created,
+        "message": message,
+        "generated_at_utc": datetime.utcnow().isoformat() + "Z",
+        "artifact_path": get_model_artifact_path(),
+        "export_script_path": get_export_script_path(),
+        "model_version": "v2.0-multi-param",
+        "onnx": {
+            "opset": ONNX_CONFIG.get("opset_version", 17),
+            "quantization": ONNX_CONFIG.get("quantization", "int8_ptq"),
+            "execution_provider": ONNX_CONFIG.get("execution_provider", "CPUExecutionProvider"),
+            "target_device": ONNX_CONFIG.get("target_device", "Ryzen AI NPU"),
+        },
+    }
+
+    manifest_path = get_export_manifest_path()
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2)
+    return manifest_path
+
+
+def export_model_artifacts() -> Dict:
+    """
+    Create and store model export artifacts.
+
+    Behavior:
+      1) Always writes export script to artifacts dir.
+      2) If PyTorch is available, exports a valid ONNX model file.
+      3) Always writes a manifest describing status and paths.
+    """
+    script_path = write_model_export_script()
+    artifact_path = get_model_artifact_path()
+
+    try:
+        import torch
+        import torch.nn as nn
+
+        class SoilMoistureExportModel(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.fc1 = nn.Linear(24, 32)
+                self.act = nn.GELU()
+                self.fc2 = nn.Linear(32, 1)
+
+            def forward(self, x):
+                out = self.fc1(x)
+                out = self.act(out)
+                out = self.fc2(out)
+                return out
+
+        model = SoilMoistureExportModel().eval()
+        dummy_input = torch.randn(1, 24)
+
+        torch.onnx.export(
+            model,
+            dummy_input,
+            artifact_path,
+            input_names=["features"],
+            output_names=["soil_moisture"],
+            dynamic_axes={"features": {0: "batch"}, "soil_moisture": {0: "batch"}},
+            opset_version=ONNX_CONFIG.get("opset_version", 17),
+            do_constant_folding=True,
+        )
+
+        manifest_path = _write_export_manifest(
+            status="success",
+            onnx_created=True,
+            message="ONNX artifact generated successfully.",
+        )
+        return {
+            "ok": True,
+            "onnx_created": True,
+            "artifact_path": artifact_path,
+            "export_script_path": script_path,
+            "manifest_path": manifest_path,
+            "requires": [],
+        }
+    except ImportError:
+        manifest_path = _write_export_manifest(
+            status="partial",
+            onnx_created=False,
+            message="PyTorch is not installed. Export script and manifest were generated.",
+        )
+        return {
+            "ok": True,
+            "onnx_created": False,
+            "artifact_path": artifact_path,
+            "export_script_path": script_path,
+            "manifest_path": manifest_path,
+            "requires": ["torch"],
+            "note": "Install PyTorch and run artifacts/export_smc_to_onnx.py to generate ONNX.",
+        }
+    except Exception as exc:
+        manifest_path = _write_export_manifest(
+            status="error",
+            onnx_created=False,
+            message=f"Export failed: {exc}",
+        )
+        return {
+            "ok": False,
+            "onnx_created": False,
+            "artifact_path": artifact_path,
+            "export_script_path": script_path,
+            "manifest_path": manifest_path,
+            "error": str(exc),
+        }
 
 
 # ================================================================

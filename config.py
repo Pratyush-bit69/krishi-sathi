@@ -328,6 +328,10 @@ ONNX_CONFIG = {
     "quantization": "int8_ptq",
     "execution_provider": "VitisAIExecutionProvider",  # or CPUExecutionProvider fallback
     "target_device": "Ryzen AI NPU",
+    "export_dir": "artifacts",
+    "model_filename": "krishi_sathi_smc_v2.onnx",
+    "export_script_filename": "export_smc_to_onnx.py",
+    "manifest_filename": "model_export_manifest.json",
 }
 
 # ─── Database ───

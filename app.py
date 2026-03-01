@@ -41,7 +41,8 @@ from pipeline import (
 )
 from models import (
     smc_model, pest_detector, yield_forecaster,
-    generate_model_export_script,
+    generate_model_export_script, export_model_artifacts,
+    get_model_artifact_path, get_export_script_path, get_export_manifest_path,
     estimate_lai, estimate_fcover, compute_vpd, compute_gdd,
 )
 from nudge_engine import nudge_generator
@@ -978,6 +979,10 @@ def model_info():
             "quantization": ONNX_CONFIG["quantization"],
             "execution_provider": ONNX_CONFIG["execution_provider"],
             "target_device": ONNX_CONFIG["target_device"],
+            "artifact_path": get_model_artifact_path(),
+            "artifact_exists": os.path.exists(get_model_artifact_path()),
+            "export_script_path": get_export_script_path(),
+            "manifest_path": get_export_manifest_path(),
         },
     })
 
@@ -986,6 +991,14 @@ def model_info():
 def model_export_script():
     """Get the PyTorch to ONNX export script for production deployment."""
     return jsonify({"script": generate_model_export_script()})
+
+
+@app.route("/api/model/export-artifact", methods=["POST"])
+def model_export_artifact():
+    """Generate model export artifacts and store them under artifacts/."""
+    result = export_model_artifacts()
+    status_code = 200 if result.get("ok") else 500
+    return jsonify(result), status_code
 
 
 @app.route("/api/crops")
