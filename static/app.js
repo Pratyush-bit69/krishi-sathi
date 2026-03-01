@@ -669,11 +669,11 @@ function onGlobeMouseMove(e) {
         if (zd) {
             tooltip.innerHTML = `
                 <div class="gt-zone">${zone}</div>
-                <div class="gt-row"><span class="gt-label"> NDVI Range:</span> ${zd.ndvi}</div>
-                <div class="gt-row"><span class="gt-label"> Moisture:</span> ${zd.moisture}</div>
-                <div class="gt-row"><span class="gt-label"> Key Crops:</span> ${zd.crops}</div>
-                <div class="gt-row"><span class="gt-label"> Risk Level:</span> ${zd.risk}</div>
-                <div class="gt-row"><span class="gt-label"> Farmers:</span> ${zd.farmers}</div>`;
+                <div class="gt-row"><span class="gt-label">NDVI Range:</span> ${zd.ndvi}</div>
+                <div class="gt-row"><span class="gt-label">Moisture:</span> ${zd.moisture}</div>
+                <div class="gt-row"><span class="gt-label">Key Crops:</span> ${zd.crops}</div>
+                <div class="gt-row"><span class="gt-label">Risk Level:</span> ${zd.risk}</div>
+                <div class="gt-row"><span class="gt-label">Farmers:</span> ${zd.farmers}</div>`;
             tooltip.style.display = "block";
             tooltip.style.left = (e.clientX - canvas.getBoundingClientRect().left + 15) + "px";
             tooltip.style.top = (e.clientY - canvas.getBoundingClientRect().top - 10) + "px";
@@ -858,10 +858,10 @@ function scrollToGlobe() {
     const tooltip = document.getElementById("globeTooltip");
     if (tooltip) {
         tooltip.innerHTML = `
-            <div class="gt-zone"> Globe Explorer</div>
-            <div class="gt-row"><span class="gt-label"> Sites:</span> ${Object.keys(SITES).length} pilot sites active</div>
-            <div class="gt-row"><span class="gt-label"> Orbits:</span> 3 satellite tracks visible</div>
-            <div class="gt-row"><span class="gt-label"> Coverage:</span> 6 agro-climatic zones</div>
+            <div class="gt-zone">Globe Explorer</div>
+            <div class="gt-row"><span class="gt-label">Sites:</span> ${Object.keys(SITES).length} pilot sites active</div>
+            <div class="gt-row"><span class="gt-label">Orbits:</span> 3 satellite tracks visible</div>
+            <div class="gt-row"><span class="gt-label">Coverage:</span> 6 agro-climatic zones</div>
             <div class="gt-row" style="margin-top:8px;opacity:0.6;">Click any marker or drag to explore</div>`;
         tooltip.style.display = "block";
         tooltip.style.left = "50%";
@@ -946,7 +946,7 @@ function plotFields(fields, siteLat, siteLon) {
                 NDVI: <b style="color:${ndviColor(f.latest_ndvi)}">${f.latest_ndvi?.toFixed(3) ?? "—"}</b> ·
                 SMC: <b>${f.soil_moisture?.toFixed(1) ?? "—"}%</b><br>
                 Yield: <b>${f.yield_forecast?.toFixed(2) ?? "—"}</b> t/ha
-                ${f.anomaly_count > 0 ? `<br><span style="color:#ef4444"> ${f.anomaly_count} anomalies</span>` : ""}
+                ${f.anomaly_count > 0 ? `<br><span style="color:#ef4444">${f.anomaly_count} anomalies</span>` : ""}
             </div>
         `);
 
@@ -1274,9 +1274,9 @@ function renderIndicesSummary(summary, fieldId) {
 }
 
 function trendIcon(t) {
-    if (t === "increasing") return "";
-    if (t === "decreasing") return "";
-    return "";
+    if (t === "increasing") return "\u25B2";
+    if (t === "decreasing") return "\u25BC";
+    return "\u25B6";
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1347,7 +1347,7 @@ async function loadAnomalies() {
 function renderAnomalies(data) {
     const panel = q("#anomaliesPanel");
     if (data.total_anomalies === 0) {
-        panel.innerHTML = '<div class="empty-state"> No spectral anomalies detected.</div>';
+        panel.innerHTML = '<div class="empty-state">No spectral anomalies detected.</div>';
         return;
     }
     let html = `<div class="anomaly-header">Total: <strong>${data.total_anomalies}</strong> spectral anomalies</div>`;
@@ -1371,7 +1371,7 @@ function renderAnomalies(data) {
 }
 
 function anomalyIcon(type) {
-    return { ndvi_drop: "", growth_lag: "", chlorophyll_stress: "" }[type] || "";
+    return { ndvi_drop: "\u25BC", growth_lag: "\u25CB", chlorophyll_stress: "\u25C6" }[type] || "\u25A0";
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1529,7 +1529,7 @@ function renderNudges(data) {
 }
 
 function nudgeIcon(type) {
-    return { irrigate: "", skip_irrigation: "", wait_for_rain: "", monitor: "", pest_alert: "" }[type] || "";
+    return { irrigate: "\u25C9", skip_irrigation: "\u2713", wait_for_rain: "\u25CB", monitor: "\u25CE", pest_alert: "\u25A0" }[type] || "\u25CF";
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1582,14 +1582,14 @@ function renderSatResults(data) {
         col.features.forEach(f => {
             const dt = f.datetime ? new Date(f.datetime) : null;
             const dateStr = dt ? dt.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "N/A";
-            const cc = f.cloud_cover != null ? ` ${f.cloud_cover.toFixed(1)}%` : "";
+            const cc = f.cloud_cover != null ? `${f.cloud_cover.toFixed(1)}%` : "";
             html += `
                 <div class="result-card">
                     ${f.thumbnail ? `<img class="result-thumb" src="${escAttr(f.thumbnail)}" alt="Preview" loading="lazy" onerror="this.style.display='none'">` : ""}
                     <div class="result-body">
                         <div class="result-id">${esc(f.id)}</div>
-                        <div class="result-meta"><span> ${dateStr}</span><span> ${esc(f.platform || "")}</span>${cc ? `<span>${cc}</span>` : ""}</div>
-                        ${f.assets?.Product ? `<a class="btn-download" href="${escAttr(f.assets.Product.href)}" target="_blank"> Download</a>` : ""}
+                        <div class="result-meta"><span>${dateStr}</span><span>${esc(f.platform || "")}</span>${cc ? `<span>${cc}</span>` : ""}</div>
+                        ${f.assets?.Product ? `<a class="btn-download" href="${escAttr(f.assets.Product.href)}" target="_blank">Download</a>` : ""}
                     </div>
                 </div>`;
         });
@@ -1765,7 +1765,7 @@ function renderFarmerActions(data) {
             if (!nudgeData.nudges || nudgeData.nudges.length === 0) {
                 panel.innerHTML = `
                     <div class="farmer-action info">
-                        <div class="action-icon"></div>
+                        <div class="action-icon">&#9679;</div>
                         <div class="action-body">
                             <div class="action-title">All good today!</div>
                             <div class="action-desc">No urgent actions needed. Keep monitoring your fields.</div>
@@ -1799,7 +1799,7 @@ function renderFarmerActions(data) {
 }
 
 function farmerActionIcon(type) {
-    return { irrigate: "", skip_irrigation: "", wait_for_rain: "", monitor: "", pest_alert: "" }[type] || "";
+    return { irrigate: "\u25C9", skip_irrigation: "\u2713", wait_for_rain: "\u25CB", monitor: "\u25CE", pest_alert: "\u25A0" }[type] || "\u25CF";
 }
 
 function simplifyNudgeMessage(nudge) {
@@ -1844,9 +1844,9 @@ function renderFarmerFields(data) {
                     <div class="field-info-status" style="color:${health.color}">${statusText}</div>
                 </div>
                 <div class="field-mini-stats">
-                    <div class="mini-stat"> <strong>${f.latest_ndvi?.toFixed(2) ?? "—"}</strong></div>
-                    <div class="mini-stat"> <strong>${f.soil_moisture?.toFixed(0) ?? "—"}%</strong></div>
-                    <div class="mini-stat"> <strong>${f.yield_forecast?.toFixed(1) ?? "—"}</strong> t/ha</div>
+                    <div class="mini-stat">NDVI <strong>${f.latest_ndvi?.toFixed(2) ?? "—"}</strong></div>
+                    <div class="mini-stat">SMC <strong>${f.soil_moisture?.toFixed(0) ?? "—"}%</strong></div>
+                    <div class="mini-stat">Yield <strong>${f.yield_forecast?.toFixed(1) ?? "—"}</strong> t/ha</div>
                 </div>
             </div>`;
     }).join("") || '<div class="empty-state">No fields found.</div>';
@@ -1854,12 +1854,12 @@ function renderFarmerFields(data) {
 
 function getFieldHealth(f) {
     if (f.anomaly_count > 2 || f.smc_category === "very_dry") {
-        return { cls: "poor", icon: "", color: "#ef4444" };
+        return { cls: "poor", icon: "\u25CF", color: "#ef4444" };
     }
     if (f.smc_category === "dry" || f.anomaly_count > 0 || (f.latest_ndvi != null && f.latest_ndvi < 0.3)) {
-        return { cls: "fair", icon: "", color: "#f59e0b" };
+        return { cls: "fair", icon: "\u25CF", color: "#f59e0b" };
     }
-    return { cls: "good", icon: "", color: "#22c55e" };
+    return { cls: "good", icon: "\u25CF", color: "#22c55e" };
 }
 
 function getFieldStatusText(f) {
@@ -1894,8 +1894,8 @@ function renderFarmerWeather() {
                             <span class="lo">${today.temp_min?.toFixed(0) ?? "—"}°</span>
                         </div>
                         <div class="weather-detail">
-                            ${today.rainfall_mm > 0 ? ` ${today.rainfall_mm.toFixed(1)} mm rain` : "No rain expected"}
-                            ·  ${today.wind_speed?.toFixed(0) ?? "—"} km/h
+                            ${today.rainfall_mm > 0 ? `${today.rainfall_mm.toFixed(1)} mm rain` : "No rain expected"}
+                            · Wind: ${today.wind_speed?.toFixed(0) ?? "—"} km/h
                         </div>
                     </div>
                 </div>
@@ -1922,12 +1922,12 @@ function renderFarmerWeather() {
 
 function getWeatherIcon(w) {
     if (!w) return "";
-    if (w.rainfall_mm > 10) return "";
-    if (w.rainfall_mm > 2) return "";
-    if (w.rainfall_mm > 0.5) return "";
-    if (w.temp_max > 38) return "";
-    if (w.temp_max > 30) return "";
-    return "";
+    if (w.rainfall_mm > 10) return "\u25CF";
+    if (w.rainfall_mm > 2) return "\u25D2";
+    if (w.rainfall_mm > 0.5) return "\u25D3";
+    if (w.temp_max > 38) return "\u25B2";
+    if (w.temp_max > 30) return "\u25CB";
+    return "\u25CE";
 }
 
 function getWeatherDesc(w) {
@@ -2021,7 +2021,7 @@ function renderModelAccuracy() {
             const models = [
                 {
                     name: "Soil Moisture CNN v2",
-                    icon: "",
+                    icon: "\u25C9",
                     accuracy: "97.1%",
                     metric: "R² Score",
                     detail: `${smcFeatures} input features · 12 spectral indices · MAE < ${data.soil_moisture_cnn?.target_mae || 4}%`,
@@ -2030,7 +2030,7 @@ function renderModelAccuracy() {
                 },
                 {
                     name: "Pest Anomaly Detector",
-                    icon: "",
+                    icon: "\u25C9",
                     accuracy: "95.3%",
                     metric: "F1-Score",
                     detail: `8-index cross-validation · temporal derivative analysis`,
@@ -2039,7 +2039,7 @@ function renderModelAccuracy() {
                 },
                 {
                     name: "Yield Forecaster v2",
-                    icon: "",
+                    icon: "\u25C9",
                     accuracy: "93.8%",
                     metric: "R² Score",
                     detail: `7-factor model: 25+ features · vegetation + water + canopy + weather`,
@@ -2076,7 +2076,7 @@ function renderModelAccuracy() {
                     ${indices.join(" · ")}
                 </div>
                 <div class="model-deployment-badge">
-                    <span class="deploy-icon"></span>
+                    <span class="deploy-icon">&#9889;</span>
                     <span>Deployed on <strong>${data.deployment?.target_device || "AMD Ryzen AI NPU"}</strong> via ${data.deployment?.format || "ONNX Runtime"} · ${data.deployment?.quantization === "int8_ptq" ? "INT8 Quantized" : data.deployment?.quantization || "INT8"}</span>
                 </div>`;
         })
@@ -2102,7 +2102,7 @@ function escAttr(str) { return String(str || "").replace(/"/g, "&quot;").replace
 function showToast(message, type = "info", duration = 4000) {
     const container = q("#toastContainer");
     if (!container) return;
-    const icons = { info: "", success: "", warning: "", error: "", satellite: "" };
+    const icons = { info: "\u2139", success: "\u2713", warning: "!", error: "\u2717", satellite: "\u25CE" };
     const toast = document.createElement("div");
     toast.className = `toast toast-${type}`;
     toast.innerHTML = `
@@ -2123,22 +2123,22 @@ function showToast(message, type = "info", duration = 4000) {
 // ═══════════════════════════════════════════════════════════════
 
 const CMD_ACTIONS = [
-    { id: "farmer", label: "Switch to Farmer View", icon: "", action: () => switchView("farmer") },
-    { id: "manager", label: "Switch to Manager View", icon: "", action: () => switchView("manager") },
-    { id: "globe", label: "Go to Globe", icon: "", action: () => showHero() },
-    { id: "export", label: "Export CSV Data", icon: "", action: () => exportCSV() },
-    { id: "refresh", label: "Refresh Dashboard", icon: "", action: () => loadDashboard(currentSite) },
+    { id: "farmer", label: "Switch to Farmer View", icon: "\u25C9", action: () => switchView("farmer") },
+    { id: "manager", label: "Switch to Manager View", icon: "\u25A3", action: () => switchView("manager") },
+    { id: "globe", label: "Go to Globe", icon: "\u25CE", action: () => showHero() },
+    { id: "export", label: "Export CSV Data", icon: "\u25BC", action: () => exportCSV() },
+    { id: "refresh", label: "Refresh Dashboard", icon: "\u21BB", action: () => loadDashboard(currentSite) },
     ...Object.entries(SITES).map(([key, s]) => ({
-        id: `site-${key}`, label: `Switch to ${s.name}`, icon: "",
+        id: `site-${key}`, label: `Switch to ${s.name}`, icon: "\u25CF",
         action: () => { q("#siteSelector").value = key; switchSite(key); },
     })),
-    { id: "ndvi", label: "View NDVI Charts", icon: "", action: () => { switchView("manager"); switchTab("ndvi"); } },
-    { id: "moisture", label: "View Soil Moisture", icon: "", action: () => { switchView("manager"); switchTab("moisture"); } },
-    { id: "anomalies", label: "View Anomalies", icon: "", action: () => { switchView("manager"); switchTab("anomalies"); } },
-    { id: "yield", label: "View Yield Forecasts", icon: "", action: () => { switchView("manager"); switchTab("yield"); } },
-    { id: "weather", label: "View Weather", icon: "", action: () => { switchView("manager"); switchTab("weather"); } },
-    { id: "satellite", label: "Search Satellite Imagery", icon: "", action: () => { switchView("manager"); switchTab("satellite"); } },
-    { id: "shortcuts", label: "Show Keyboard Shortcuts", icon: "", action: () => showToast("Ctrl+K: Command Palette · F: Farmer · M: Manager · G: Globe · E: Export", "info", 6000) },
+    { id: "ndvi", label: "View NDVI Charts", icon: "\u25B2", action: () => { switchView("manager"); switchTab("ndvi"); } },
+    { id: "moisture", label: "View Soil Moisture", icon: "\u25C9", action: () => { switchView("manager"); switchTab("moisture"); } },
+    { id: "anomalies", label: "View Anomalies", icon: "\u25A0", action: () => { switchView("manager"); switchTab("anomalies"); } },
+    { id: "yield", label: "View Yield Forecasts", icon: "\u25B3", action: () => { switchView("manager"); switchTab("yield"); } },
+    { id: "weather", label: "View Weather", icon: "\u25CB", action: () => { switchView("manager"); switchTab("weather"); } },
+    { id: "satellite", label: "Search Satellite Imagery", icon: "\u25CE", action: () => { switchView("manager"); switchTab("satellite"); } },
+    { id: "shortcuts", label: "Show Keyboard Shortcuts", icon: "\u2328", action: () => showToast("Ctrl+K: Command Palette · F: Farmer · M: Manager · G: Globe · E: Export", "info", 6000) },
 ];
 
 let cmdSelectedIdx = 0;
@@ -2265,12 +2265,12 @@ function renderWaterBalance(data) {
                     </div>
                     <div class="wb-bars">
                         <div class="wb-bar-row">
-                            <span class="wb-label"> Rain (${wb.period_days}d)</span>
+                            <span class="wb-label">Rain (${wb.period_days}d)</span>
                             <div class="wb-bar"><div class="wb-fill rain" style="width:${Math.min(wb.total_rainfall_mm / barMax * 100, 100)}%"></div></div>
                             <span class="wb-val">${wb.total_rainfall_mm.toFixed(0)} mm</span>
                         </div>
                         <div class="wb-bar-row">
-                            <span class="wb-label"> ETc (${wb.period_days}d)</span>
+                            <span class="wb-label">ETc (${wb.period_days}d)</span>
                             <div class="wb-bar"><div class="wb-fill etc" style="width:${Math.min(wb.total_etc_mm / barMax * 100, 100)}%"></div></div>
                             <span class="wb-val">${wb.total_etc_mm.toFixed(0)} mm</span>
                         </div>
@@ -2349,7 +2349,7 @@ function renderAlertDigest() {
         .then(r => r.json())
         .then(data => {
             if (data.total_alerts === 0) {
-                panel.innerHTML = '<div class="digest-clear"><span class="digest-icon"></span><p>No active alerts — all fields healthy.</p></div>';
+                panel.innerHTML = '<div class="digest-clear"><span class="digest-icon">\u2713</span><p>No active alerts — all fields healthy.</p></div>';
                 return;
             }
 
@@ -2374,7 +2374,7 @@ function renderAlertDigest() {
 
             // Fire toast for critical alerts
             if (data.critical > 0) {
-                showToast(` ${data.critical} critical alert${data.critical > 1 ? 's' : ''} at ${data.site}!`, "warning", 5000);
+                showToast(`${data.critical} critical alert${data.critical > 1 ? 's' : ''} at ${data.site}!`, "warning", 5000);
             }
         })
         .catch(() => { panel.innerHTML = '<div class="empty-state">Alert digest unavailable.</div>'; });

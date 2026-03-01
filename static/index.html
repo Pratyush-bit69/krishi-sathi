@@ -38,7 +38,7 @@
     <div class="cmd-palette-overlay" id="cmdPalette" hidden>
         <div class="cmd-palette">
             <div class="cmd-header">
-                <span class="cmd-icon"></span>
+                <span class="cmd-icon">&#8984;</span>
                 <input type="text" id="cmdInput" class="cmd-input" placeholder="Search sites, fields, actions…" autocomplete="off">
                 <kbd class="cmd-kbd">ESC</kbd>
             </div>
@@ -76,11 +76,11 @@
                 </p>
                 <div class="hero-actions">
                     <button class="btn-hero-primary" onclick="enterDashboard()">
-                        <span class="btn-icon"></span>
+                        <span class="btn-icon">&#9678;</span>
                         Enter Mission Control
                     </button>
                     <button class="btn-hero-secondary" onclick="scrollToGlobe()">
-                        <span class="btn-icon"></span>
+                        <span class="btn-icon">&#9673;</span>
                         Explore Globe
                     </button>
                 </div>
@@ -164,29 +164,25 @@
                 <div class="site-selector-wrap">
                     <label for="siteSelector">PILOT SITE</label>
                     <select id="siteSelector" class="site-select" onchange="switchSite(this.value)">
-                        <option value="icrisat"> ICRISAT Hyderabad (17.32°N, 78.21°E)</option>
-                        <option value="ludhiana"> Ludhiana Punjab (30.90°N, 75.86°E)</option>
-                        <option value="nashik"> Nashik Maharashtra (20.00°N, 73.79°E)</option>
-                        <option value="coimbatore"> TNAU Coimbatore (11.02°N, 76.96°E)</option>
-                        <option value="bhopal"> Bhopal MP (23.26°N, 77.41°E)</option>
-                        <option value="varanasi"> Varanasi UP (25.32°N, 82.97°E)</option>
+                        <option value="icrisat">ICRISAT Hyderabad (17.32°N, 78.21°E)</option>
+                        <option value="ludhiana">Ludhiana Punjab (30.90°N, 75.86°E)</option>
+                        <option value="nashik">Nashik Maharashtra (20.00°N, 73.79°E)</option>
+                        <option value="coimbatore">TNAU Coimbatore (11.02°N, 76.96°E)</option>
+                        <option value="bhopal">Bhopal MP (23.26°N, 77.41°E)</option>
+                        <option value="varanasi">Varanasi UP (25.32°N, 82.97°E)</option>
                     </select>
                 </div>
                 <!-- View Toggle -->
                 <div class="view-toggle" id="viewToggle">
-                    <button class="view-btn active" data-view="farmer" onclick="switchView('farmer')">
-                         Farmer
-                    </button>
-                    <button class="view-btn" data-view="manager" onclick="switchView('manager')">
-                         Manager
-                    </button>
+                    <button class="view-btn active" data-view="farmer" onclick="switchView('farmer')">Farmer</button>
+                    <button class="view-btn" data-view="manager" onclick="switchView('manager')">Manager</button>
                 </div>
                 <div class="header-badge">
                     <span class="badge-dot"></span>
                     <span id="headerStatus">Initializing…</span>
                 </div>
-                <button class="btn-export" onclick="exportCSV()" title="Export CSV"> Export</button>
-                <button class="btn-back-globe" onclick="showHero()" title="Back to Globe"></button>
+                <button class="btn-export" onclick="exportCSV()" title="Export CSV">Export</button>
+                <button class="btn-back-globe" onclick="showHero()" title="Back to Globe">&#x21A9; Home</button>
             </div>
         </header>
 
@@ -196,7 +192,7 @@
             <!-- ─── TOP: Site Summary Bar ─── -->
             <section class="summary-bar" id="summaryBar">
                 <div class="summary-card" data-anim="1">
-                    <div class="summary-icon-wrap"><div class="summary-icon"></div></div>
+                    <div class="summary-icon-wrap"><div class="summary-icon">F</div></div>
                     <div class="summary-content">
                         <span class="summary-value" id="sumFields">—</span>
                         <span class="summary-label">Fields</span>
@@ -204,7 +200,7 @@
                     <div class="summary-glow"></div>
                 </div>
                 <div class="summary-card" data-anim="2">
-                    <div class="summary-icon-wrap"><div class="summary-icon"></div></div>
+                    <div class="summary-icon-wrap"><div class="summary-icon">H</div></div>
                     <div class="summary-content">
                         <span class="summary-value" id="sumArea">—</span>
                         <span class="summary-label">Hectares</span>
@@ -212,7 +208,7 @@
                     <div class="summary-glow"></div>
                 </div>
                 <div class="summary-card" data-anim="3">
-                    <div class="summary-icon-wrap"><div class="summary-icon"></div></div>
+                    <div class="summary-icon-wrap"><div class="summary-icon">N</div></div>
                     <div class="summary-content">
                         <span class="summary-value" id="sumNDVI">—</span>
                         <span class="summary-label">Avg NDVI</span>
@@ -220,7 +216,7 @@
                     <div class="summary-glow"></div>
                 </div>
                 <div class="summary-card" data-anim="4">
-                    <div class="summary-icon-wrap"><div class="summary-icon"></div></div>
+                    <div class="summary-icon-wrap"><div class="summary-icon">S</div></div>
                     <div class="summary-content">
                         <span class="summary-value" id="sumSMC">—</span>
                         <span class="summary-label">Soil Moisture</span>
@@ -228,7 +224,7 @@
                     <div class="summary-glow"></div>
                 </div>
                 <div class="summary-card" data-anim="5">
-                    <div class="summary-icon-wrap"><div class="summary-icon"></div></div>
+                    <div class="summary-icon-wrap"><div class="summary-icon">!</div></div>
                     <div class="summary-content">
                         <span class="summary-value" id="sumAnomalies">—</span>
                         <span class="summary-label">Anomalies</span>
@@ -236,7 +232,7 @@
                     <div class="summary-glow"></div>
                 </div>
                 <div class="summary-card" data-anim="6">
-                    <div class="summary-icon-wrap"><div class="summary-icon"></div></div>
+                    <div class="summary-icon-wrap"><div class="summary-icon">E</div></div>
                     <div class="summary-content">
                         <span class="summary-value" id="sumHardware">—</span>
                         <span class="summary-label">Edge Hub</span>
@@ -251,7 +247,7 @@
                     <!-- Farm Health Overview -->
                     <div class="farmer-card health-card glass-card">
                         <div class="farmer-card-header">
-                            <span class="farmer-card-icon"></span>
+                            <span class="farmer-card-icon">&#9679;</span>
                             <h2>Your Farm Health</h2>
                         </div>
                         <div class="health-score-wrap" id="farmHealthWrap">
@@ -271,7 +267,7 @@
                         <div class="crop-advisory-inline" id="cropAdvisoryInline">
                             <div class="advisory-divider"></div>
                             <div class="advisory-header">
-                                <span class="advisory-icon"></span>
+                                <span class="advisory-icon">&#9679;</span>
                                 <h3>Crop Advisory</h3>
                             </div>
                             <div class="advisory-content" id="advisoryContent">
@@ -283,7 +279,7 @@
                     <!-- Today's Actions -->
                     <div class="farmer-card actions-card glass-card">
                         <div class="farmer-card-header">
-                            <span class="farmer-card-icon"></span>
+                            <span class="farmer-card-icon">&#9679;</span>
                             <h2>Today's Actions</h2>
                         </div>
                         <div class="farmer-actions" id="farmerActions">
@@ -294,7 +290,7 @@
                     <!-- AI Model Accuracy -->
                     <div class="farmer-card model-card glass-card">
                         <div class="farmer-card-header">
-                            <span class="farmer-card-icon"></span>
+                            <span class="farmer-card-icon">&#9679;</span>
                             <h2>AI Model Performance</h2>
                         </div>
                         <div class="model-accuracy-wrap" id="modelAccuracyWrap">
@@ -305,7 +301,7 @@
                     <!-- Field Status -->
                     <div class="farmer-card fields-overview-card glass-card">
                         <div class="farmer-card-header">
-                            <span class="farmer-card-icon"></span>
+                            <span class="farmer-card-icon">&#9679;</span>
                             <h2>Your Fields</h2>
                         </div>
                         <div class="farmer-fields" id="farmerFields">
@@ -316,7 +312,7 @@
                     <!-- Water Balance -->
                     <div class="farmer-card water-balance-card glass-card">
                         <div class="farmer-card-header">
-                            <span class="farmer-card-icon"></span>
+                            <span class="farmer-card-icon">&#9679;</span>
                             <h2>Water Balance</h2>
                         </div>
                         <div class="water-balance-wrap" id="waterBalanceWrap">
@@ -327,7 +323,7 @@
                     <!-- Crop Phenology Timeline -->
                     <div class="farmer-card phenology-card glass-card">
                         <div class="farmer-card-header">
-                            <span class="farmer-card-icon"></span>
+                            <span class="farmer-card-icon">&#9679;</span>
                             <h2>Crop Timeline</h2>
                         </div>
                         <div class="phenology-wrap" id="phenologyWrap">
@@ -338,7 +334,7 @@
                     <!-- Weather Quick -->
                     <div class="farmer-card weather-card glass-card" style="grid-column: 1 / -1;">
                         <div class="farmer-card-header">
-                            <span class="farmer-card-icon"></span>
+                            <span class="farmer-card-icon">&#9679;</span>
                             <h2>Weather This Week</h2>
                         </div>
                         <div class="farmer-weather" id="farmerWeather">
@@ -351,7 +347,7 @@
                     <!-- Alert Digest -->
                     <div class="farmer-card alerts-card glass-card" style="grid-column: 1 / -1;">
                         <div class="farmer-card-header">
-                            <span class="farmer-card-icon"></span>
+                            <span class="farmer-card-icon">&#9679;</span>
                             <h2>Alert Digest</h2>
                         </div>
                         <div class="alert-digest-wrap" id="alertDigestWrap">
@@ -362,7 +358,7 @@
                     <!-- Site Comparison -->
                     <div class="farmer-card compare-card glass-card" style="grid-column: 1 / -1;">
                         <div class="farmer-card-header">
-                            <span class="farmer-card-icon"></span>
+                            <span class="farmer-card-icon">&#9679;</span>
                             <h2>Site Comparison</h2>
                         </div>
                         <div class="compare-controls">
@@ -426,13 +422,13 @@
 
                     <!-- Tab Navigation -->
                     <div class="tab-bar">
-                        <button class="tab active" data-tab="ndvi" onclick="switchTab('ndvi')"> NDVI/NDWI</button>
-                        <button class="tab" data-tab="moisture" onclick="switchTab('moisture')"> Moisture</button>
-                        <button class="tab" data-tab="anomalies" onclick="switchTab('anomalies')"> Anomalies</button>
-                        <button class="tab" data-tab="yield" onclick="switchTab('yield')"> Yield</button>
+                        <button class="tab active" data-tab="ndvi" onclick="switchTab('ndvi')">NDVI/NDWI</button>
+                        <button class="tab" data-tab="moisture" onclick="switchTab('moisture')">Moisture</button>
+                        <button class="tab" data-tab="anomalies" onclick="switchTab('anomalies')">Anomalies</button>
+                        <button class="tab" data-tab="yield" onclick="switchTab('yield')">Yield</button>
 
-                        <button class="tab" data-tab="weather" onclick="switchTab('weather')"> Weather</button>
-                        <button class="tab" data-tab="satellite" onclick="switchTab('satellite')"> Satellite</button>
+                        <button class="tab" data-tab="weather" onclick="switchTab('weather')">Weather</button>
+                        <button class="tab" data-tab="satellite" onclick="switchTab('satellite')">Satellite</button>
                     </div>
 
                     <!-- NDVI/NDWI Tab -->
@@ -651,7 +647,7 @@
         <div class="footer-grid">
             <div class="footer-col">
                 <div class="footer-brand">
-                    <span class="footer-logo"></span>
+                    <span class="footer-logo">KS</span>
                     <span class="footer-name">Krishi-Sathi</span>
                 </div>
                 <p class="footer-desc">AI-first precision agriculture SaaS — satellite to field nudges for India's smallholder farmers.</p>
@@ -659,28 +655,28 @@
             <div class="footer-col">
                 <h4>Tech Stack</h4>
                 <ul class="footer-list">
-                    <li> Python 3.10+ / Flask</li>
-                    <li> ONNX Runtime (INT8 PTQ)</li>
-                    <li> AMD Ryzen AI NPU (XDNA™)</li>
-                    <li> Sentinel-2 L2A / Sentinel-1 GRD</li>
+                    <li>Python 3.10+ / Flask</li>
+                    <li>ONNX Runtime (INT8 PTQ)</li>
+                    <li>AMD Ryzen AI NPU (XDNA™)</li>
+                    <li>Sentinel-2 L2A / Sentinel-1 GRD</li>
                 </ul>
             </div>
             <div class="footer-col">
                 <h4>Frontend</h4>
                 <ul class="footer-list">
-                    <li> Three.js r128 (3D Globe)</li>
-                    <li> Chart.js 4.4.7</li>
-                    <li> Leaflet 1.9.4</li>
-                    <li> GSAP 3.12.5</li>
+                    <li>Three.js r128 (3D Globe)</li>
+                    <li>Chart.js 4.4.7</li>
+                    <li>Leaflet 1.9.4</li>
+                    <li>GSAP 3.12.5</li>
                 </ul>
             </div>
             <div class="footer-col">
                 <h4>Data Sources</h4>
                 <ul class="footer-list">
-                    <li> Copernicus Data Space (STAC)</li>
-                    <li> Open-Meteo API</li>
-                    <li> SQLite WAL Mode</li>
-                    <li> Multilingual Nudge Engine</li>
+                    <li>Copernicus Data Space (STAC)</li>
+                    <li>Open-Meteo API</li>
+                    <li>SQLite WAL Mode</li>
+                    <li>Multilingual Nudge Engine</li>
                 </ul>
             </div>
         </div>
