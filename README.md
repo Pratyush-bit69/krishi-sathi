@@ -195,6 +195,22 @@ session = ort.InferenceSession("model_int8.onnx", providers=providers)
 - **ONNX Opset**: 17
 - **Execution Provider**: VitisAIExecutionProvider (XDNA™ NPU)
 
+### Model Artifact Storage
+
+The production export workflow now stores model artifacts under:
+
+- `artifacts/krishi_sathi_smc_v2.onnx` (generated ONNX model)
+- `artifacts/export_smc_to_onnx.py` (export script)
+- `artifacts/model_export_manifest.json` (export metadata/status)
+
+You can trigger artifact generation via API:
+
+- `POST /api/model/export-artifact`
+
+You can inspect deployment metadata and artifact availability via:
+
+- `GET /api/model/info`
+
 ---
 
 ## APIs & Endpoints
