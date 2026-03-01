@@ -35,11 +35,14 @@ from pipeline import (
     generate_simulated_indices, store_indices, get_field_timeseries,
     fetch_weather, get_weather_history,
     compute_ndvi, compute_ndwi, compute_reci, compute_bsi,
+    compute_evi, compute_savi, compute_msavi, compute_ndre,
+    compute_gndvi, compute_lswi, compute_nbr, compute_cig, compute_ndmi,
     classify_ndvi, classify_ndwi,
 )
 from models import (
     smc_model, pest_detector, yield_forecaster,
     generate_model_export_script,
+    estimate_lai, estimate_fcover, compute_vpd, compute_gdd,
 )
 from nudge_engine import nudge_generator
 
@@ -50,6 +53,81 @@ CORS(app)
 # Initialize database and seed pilot fields
 init_pipeline_db()
 seed_pilot_fields()
+
+
+def _build_smc_kwargs(latest, weather_7d, site, field, das):
+    """Build kwargs dict for smc_model.predict from latest indices + weather."""
+    crop_profile = CROP_PROFILES.get(field.get("crop", "wheat"), CROP_PROFILES["wheat"])
+    kc = 0.3
+    for stage in crop_profile["growth_stages"].values():
+        if stage["days"][0] <= das <= stage["days"][1]:
+            kc = stage["kc"]
+            break
+
+    rainfall_7d = sum(w.get("rainfall_mm", 0) or 0 for w in weather_7d) if weather_7d else 0
+    rainfall_14d = rainfall_7d * 1.8  # approximate
+    rainfall_30d = rainfall_7d * 3.5
+    et0_7d = sum(w.get("et0", 5) or 5 for w in weather_7d) if weather_7d else 35
+
+    # Average weather for derived features
+    if weather_7d:
+        temp_max = sum(w.get("temp_max", 32) or 32 for w in weather_7d) / len(weather_7d)
+        temp_min = sum(w.get("temp_min", 18) or 18 for w in weather_7d) / len(weather_7d)
+        humidity = sum(w.get("humidity", 55) or 55 for w in weather_7d) / len(weather_7d)
+        wind_speed = sum(w.get("wind_speed", 10) or 10 for w in weather_7d) / len(weather_7d)
+    else:
+        temp_max, temp_min, humidity, wind_speed = 32.0, 18.0, 55.0, 10.0
+
+    return {
+        "ndvi": latest.get("ndvi", 0.4),
+        "ndwi": latest.get("ndwi", 0.0),
+        "evi": latest.get("evi", 0.3),
+        "savi": latest.get("savi", 0.35),
+        "msavi": latest.get("msavi", 0.35),
+        "ndre": latest.get("ndre", 0.3),
+        "gndvi": latest.get("gndvi", 0.45),
+        "lswi": latest.get("lswi", 0.0),
+        "nbr": latest.get("nbr", 0.2),
+        "bsi": latest.get("bsi", 0.1),
+        "cig": latest.get("cig", 1.0),
+        "reci": latest.get("reci", 1.2),
+        "rainfall_7d": rainfall_7d,
+        "rainfall_14d": rainfall_14d,
+        "rainfall_30d": rainfall_30d,
+        "et0_7d": et0_7d,
+        "temp_max": temp_max,
+        "temp_min": temp_min,
+        "humidity": humidity,
+        "wind_speed": wind_speed,
+        "crop_kc": kc,
+        "days_after_sowing": das,
+        "agro_zone": site.get("agro_zone", "Indo-Gangetic Plains"),
+        "irrigation_type": field.get("irrigation", "rainfed"),
+    }
+
+
+def _build_yield_kwargs(timeseries, field_id, crop, sowing_date, area_ha, weather, anomaly_count=0, irrigation_type="rainfed"):
+    """Build kwargs dict for yield_forecaster.forecast from full timeseries."""
+    return {
+        "field_id": field_id,
+        "crop": crop,
+        "ndvi_series": [t["ndvi"] for t in timeseries if t.get("ndvi") is not None],
+        "smc_series": [],
+        "weather": weather,
+        "sowing_date": sowing_date,
+        "area_ha": area_ha,
+        "evi_series": [t["evi"] for t in timeseries if t.get("evi") is not None],
+        "savi_series": [t["savi"] for t in timeseries if t.get("savi") is not None],
+        "ndre_series": [t["ndre"] for t in timeseries if t.get("ndre") is not None],
+        "gndvi_series": [t["gndvi"] for t in timeseries if t.get("gndvi") is not None],
+        "lswi_series": [t["lswi"] for t in timeseries if t.get("lswi") is not None],
+        "ndwi_series": [t["ndwi"] for t in timeseries if t.get("ndwi") is not None],
+        "reci_series": [t["reci"] for t in timeseries if t.get("reci") is not None],
+        "cig_series": [t["cig"] for t in timeseries if t.get("cig") is not None],
+        "bsi_series": [t["bsi"] for t in timeseries if t.get("bsi") is not None],
+        "anomaly_count": anomaly_count,
+        "irrigation_type": irrigation_type,
+    }
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -358,29 +436,14 @@ def get_soil_moisture(field_id):
 
     # Get recent weather
     weather = get_weather_history(field["site_key"], 7)
-    rainfall_7d = sum(w.get("rainfall_mm", 0) or 0 for w in weather) if weather else 0
-    et0_7d = sum(w.get("et0", 5) or 5 for w in weather) if weather else 35
 
-    # Get crop Kc
-    crop_profile = CROP_PROFILES.get(field["crop"], CROP_PROFILES["wheat"])
+    # Compute days after sowing
     sowing = datetime.strptime(field["sowing_date"], "%Y-%m-%d")
     das = (datetime.utcnow() - sowing).days
-    kc = 0.3
-    for stage in crop_profile["growth_stages"].values():
-        if stage["days"][0] <= das <= stage["days"][1]:
-            kc = stage["kc"]
-            break
 
-    # Run model prediction
-    prediction = smc_model.predict(
-        ndvi=latest.get("ndvi", 0.4),
-        ndwi=latest.get("ndwi", 0.0),
-        bsi=latest.get("bsi", 0.1),
-        rainfall_7d=rainfall_7d,
-        et0_7d=et0_7d,
-        agro_zone=site.get("agro_zone", "Indo-Gangetic Plains"),
-        crop_kc=kc,
-    )
+    # Run multi-parameter model prediction
+    kwargs = _build_smc_kwargs(latest, weather, site, field, das)
+    prediction = smc_model.predict(**kwargs)
 
     # Store prediction
     conn = get_db()
@@ -388,7 +451,7 @@ def get_soil_moisture(field_id):
         INSERT OR REPLACE INTO soil_moisture (field_id, date, smc_percent, confidence, method)
         VALUES (?, ?, ?, ?, ?)
     """, (field_id, datetime.utcnow().strftime("%Y-%m-%d"),
-          prediction["smc_percent"], prediction["confidence"], "cnn_proxy"))
+          prediction["smc_percent"], prediction["confidence"], "cnn_v2_proxy"))
     conn.commit()
     conn.close()
 
@@ -396,8 +459,8 @@ def get_soil_moisture(field_id):
     prediction["field_name"] = field["name"]
     prediction["crop"] = field["crop"]
     prediction["weather"] = {
-        "rainfall_7d_mm": round(rainfall_7d, 1),
-        "et0_7d_mm": round(et0_7d, 1),
+        "rainfall_7d_mm": round(kwargs["rainfall_7d"], 1),
+        "et0_7d_mm": round(kwargs["et0_7d"], 1),
     }
 
     return jsonify(prediction)
@@ -422,17 +485,10 @@ def get_site_soil_moisture(site_key):
         latest = ts[-1] if ts else {"ndvi": 0.4, "ndwi": 0.0, "bsi": 0.1}
 
         weather = get_weather_history(site_key, 7)
-        rainfall_7d = sum(w.get("rainfall_mm", 0) or 0 for w in weather) if weather else 0
-        et0_7d = sum(w.get("et0", 5) or 5 for w in weather) if weather else 35
-
-        pred = smc_model.predict(
-            ndvi=latest.get("ndvi", 0.4),
-            ndwi=latest.get("ndwi", 0.0),
-            bsi=latest.get("bsi", 0.1),
-            rainfall_7d=rainfall_7d,
-            et0_7d=et0_7d,
-            agro_zone=site.get("agro_zone", "Indo-Gangetic Plains"),
-        )
+        sowing = datetime.strptime(field.get("sowing_date", "2025-11-01"), "%Y-%m-%d")
+        das = (datetime.utcnow() - sowing).days
+        kwargs = _build_smc_kwargs(latest, weather, site, field, das)
+        pred = smc_model.predict(**kwargs)
         pred["field_id"] = field["id"]
         pred["field_name"] = field["name"]
         pred["crop"] = field["crop"]
@@ -552,25 +608,21 @@ def get_yield_forecast(field_id):
         store_indices(records)
         ts = get_field_timeseries(field_id, 120)
 
-    ndvi_series = [t["ndvi"] for t in ts if t.get("ndvi") is not None]
     weather = get_weather_history(field["site_key"], 60)
+    site = PILOT_SITES.get(field["site_key"], {})
+    sowing = datetime.strptime(field.get("sowing_date", "2025-11-01"), "%Y-%m-%d")
+    das = (datetime.utcnow() - sowing).days
 
     smc_series = []
     for t in ts[-20:]:
-        pred = smc_model.predict(
-            ndvi=t.get("ndvi", 0.4), ndwi=t.get("ndwi", 0.0), bsi=t.get("bsi", 0.1),
-        )
+        t_kwargs = _build_smc_kwargs(t, weather, site, field, das)
+        pred = smc_model.predict(**t_kwargs)
         smc_series.append(pred["smc_percent"])
 
-    forecast = yield_forecaster.forecast(
-        field_id=field_id,
-        crop=field.get("crop", "wheat"),
-        ndvi_series=ndvi_series,
-        smc_series=smc_series,
-        weather=weather,
-        sowing_date=field.get("sowing_date", "2025-11-01"),
-        area_ha=field.get("area_ha", 1.0),
-    )
+    anomalies_yf = pest_detector.detect_anomalies(ts, crop=field.get("crop", "wheat"), sowing_date=field.get("sowing_date", "2025-11-01"))
+    yk = _build_yield_kwargs(ts, field_id, field.get("crop", "wheat"), field.get("sowing_date", "2025-11-01"), field.get("area_ha", 1.0), weather, anomaly_count=len(anomalies_yf), irrigation_type=field.get("irrigation", "rainfed"))
+    yk["smc_series"] = smc_series
+    forecast = yield_forecaster.forecast(**yk)
 
     conn = get_db()
     conn.execute("""
@@ -604,22 +656,20 @@ def get_site_yield(site_key):
             store_indices(records)
             ts = get_field_timeseries(field["id"], 120)
 
-        ndvi_series = [t["ndvi"] for t in ts if t.get("ndvi") is not None]
         weather = get_weather_history(site_key, 60)
+        sowing = datetime.strptime(field.get("sowing_date", "2025-11-01"), "%Y-%m-%d")
+        das = (datetime.utcnow() - sowing).days
 
         smc_series = []
         for t in ts[-10:]:
-            pred = smc_model.predict(
-                ndvi=t.get("ndvi", 0.4), ndwi=t.get("ndwi", 0.0), bsi=t.get("bsi", 0.1),
-            )
+            t_kwargs = _build_smc_kwargs(t, weather, site, field, das)
+            pred = smc_model.predict(**t_kwargs)
             smc_series.append(pred["smc_percent"])
 
-        forecast = yield_forecaster.forecast(
-            field_id=field["id"], crop=field["crop"],
-            ndvi_series=ndvi_series, smc_series=smc_series,
-            weather=weather, sowing_date=field["sowing_date"],
-            area_ha=field["area_ha"],
-        )
+        anomalies_yf = pest_detector.detect_anomalies(ts, crop=field["crop"], sowing_date=field["sowing_date"])
+        yk = _build_yield_kwargs(ts, field["id"], field["crop"], field["sowing_date"], field["area_ha"], weather, anomaly_count=len(anomalies_yf), irrigation_type=field.get("irrigation", "rainfed"))
+        yk["smc_series"] = smc_series
+        forecast = yield_forecaster.forecast(**yk)
         forecasts.append(forecast)
 
     total_yield = sum(f["total_yield_tonnes"] for f in forecasts)
@@ -652,6 +702,7 @@ def generate_nudges(site_key):
 
     field_data = []
     anomalies_map = {}
+    weather = get_weather_history(site_key, 7)
 
     for field in site.get("fields", []):
         ts = get_field_timeseries(field["id"], 30)
@@ -663,12 +714,10 @@ def generate_nudges(site_key):
 
         latest = ts[-1] if ts else {"ndvi": 0.4, "ndwi": 0.0, "bsi": 0.1}
 
-        pred = smc_model.predict(
-            ndvi=latest.get("ndvi", 0.4),
-            ndwi=latest.get("ndwi", 0.0),
-            bsi=latest.get("bsi", 0.1),
-            agro_zone=site.get("agro_zone", "Indo-Gangetic Plains"),
-        )
+        sowing = datetime.strptime(field.get("sowing_date", "2025-11-01"), "%Y-%m-%d")
+        das = (datetime.utcnow() - sowing).days
+        kwargs = _build_smc_kwargs(latest, weather, site, field, das)
+        pred = smc_model.predict(**kwargs)
 
         field_data.append({
             "field_id": field["id"],
@@ -689,8 +738,6 @@ def generate_nudges(site_key):
         )
         if anomalies:
             anomalies_map[field["id"]] = anomalies[:2]
-
-    weather = get_weather_history(site_key, 7)
 
     nudges = nudge_generator.generate_all_nudges(
         site_key=site_key,
@@ -799,25 +846,20 @@ def dashboard(site_key):
 
         latest = ts[-1] if ts else {}
 
-        pred = smc_model.predict(
-            ndvi=latest.get("ndvi", 0.4),
-            ndwi=latest.get("ndwi", 0.0),
-            bsi=latest.get("bsi", 0.1),
-            agro_zone=site.get("agro_zone", ""),
-        )
+        weather = get_weather_history(site_key, 30)
+        sowing = datetime.strptime(field.get("sowing_date", "2025-11-01"), "%Y-%m-%d")
+        das = (datetime.utcnow() - sowing).days
+        kwargs = _build_smc_kwargs(latest, weather, site, field, das)
+        pred = smc_model.predict(**kwargs)
 
         anomalies = pest_detector.detect_anomalies(
             ts, crop=field["crop"], sowing_date=field["sowing_date"]
         )
         total_anomalies += len(anomalies)
 
-        ndvi_series = [t["ndvi"] for t in ts if t.get("ndvi") is not None]
-        smc_series = [pred["smc_percent"]]
-        weather = get_weather_history(site_key, 30)
-        yf = yield_forecaster.forecast(
-            field["id"], field["crop"], ndvi_series, smc_series,
-            weather, field["sowing_date"], field["area_ha"]
-        )
+        yk = _build_yield_kwargs(ts, field["id"], field["crop"], field["sowing_date"], field["area_ha"], weather, anomaly_count=len(anomalies), irrigation_type=field.get("irrigation", "rainfed"))
+        yk["smc_series"] = [pred["smc_percent"]]
+        yf = yield_forecaster.forecast(**yk)
 
         total_area += field["area_ha"]
 
@@ -885,19 +927,51 @@ def dashboard(site_key):
 def model_info():
     """Get model architecture and deployment info."""
     return jsonify({
-        "soil_moisture_cnn": smc_model.get_onnx_config(),
+        "soil_moisture_cnn": {
+            **smc_model.get_onnx_config(),
+            "version": "2.0-multi-param",
+            "input_features": smc_model.INPUT_FEATURES,
+            "n_features": len(smc_model.INPUT_FEATURES),
+            "spectral_indices_used": [
+                "NDVI", "NDWI", "EVI", "SAVI", "MSAVI", "NDRE",
+                "GNDVI", "LSWI", "NBR", "BSI", "CIG", "RECI"
+            ],
+            "derived_features": ["LAI", "fCover", "VPD"],
+            "target_mae": 4,
+        },
         "pest_detector": {
-            "method": "Unsupervised Spectral Anomaly Detection",
-            "features": ["NDVI change", "RedEdge Chlorophyll Index", "Growth stage deviation"],
+            "version": "2.0-multi-index",
+            "method": "Cross-Index Spectral Anomaly Detection with Temporal Derivatives",
+            "features": [
+                "NDVI change", "EVI drop", "NDRE drop", "LSWI drop",
+                "GNDVI drop", "RECI drop", "BSI change", "CIG drop"
+            ],
             "thresholds": {
                 "ndvi_drop": pest_detector.ndvi_drop_threshold,
+                "evi_drop": pest_detector.evi_drop_threshold,
+                "ndre_drop": pest_detector.ndre_drop_threshold,
+                "lswi_drop": pest_detector.lswi_drop_threshold,
+                "gndvi_drop": pest_detector.gndvi_drop_threshold,
                 "reci_drop": pest_detector.reci_drop_threshold,
             },
+            "anomaly_types": [
+                "pest_damage", "water_stress", "nutrient_deficiency",
+                "disease", "ndvi_drop", "spectral_anomaly", "accelerating_decline"
+            ],
         },
         "yield_forecaster": {
-            "method": "Multi-modal Analytical (NDVI + SMC + Weather)",
+            "version": "2.0-multi-factor",
+            "method": "7-Factor Analytical Model (25+ features)",
             "baseline_yields": yield_forecaster.BASELINE_YIELDS,
-            "factor_weights": {"ndvi": 0.45, "water": 0.30, "weather": 0.25},
+            "factor_weights": {
+                "vegetation": 0.25, "water": 0.20, "canopy_health": 0.15,
+                "weather": 0.15, "soil": 0.10, "temporal": 0.10, "anomaly": 0.05,
+            },
+            "factor_categories": [
+                "vegetation", "water", "canopy_health",
+                "weather", "soil", "temporal", "anomaly"
+            ],
+            "n_factors": 7,
         },
         "deployment": {
             "format": "ONNX Runtime",
@@ -1067,53 +1141,7 @@ def _fmt_duration(secs):
     return " ".join(parts)
 
 
-@app.route("/api/stats")
-def platform_stats():
-    """Global platform statistics."""
-    conn = get_db()
-    field_count = conn.execute("SELECT COUNT(*) FROM fields").fetchone()[0]
-    idx_count = conn.execute("SELECT COUNT(*) FROM spectral_indices").fetchone()[0]
-    anomaly_count = conn.execute("SELECT COUNT(*) FROM anomalies").fetchone()[0]
-    nudge_count = conn.execute("SELECT COUNT(*) FROM nudges").fetchone()[0]
-    weather_count = conn.execute("SELECT COUNT(*) FROM weather").fetchone()[0]
-    yield_count = conn.execute("SELECT COUNT(*) FROM yield_forecasts").fetchone()[0]
-    smc_count = conn.execute("SELECT COUNT(*) FROM soil_moisture").fetchone()[0]
 
-    # Per-site breakdown
-    sites_breakdown = {}
-    for key, site in PILOT_SITES.items():
-        fc = conn.execute("SELECT COUNT(*) FROM fields WHERE site_key = ?", (key,)).fetchone()[0]
-        ic = conn.execute("""SELECT COUNT(*) FROM spectral_indices
-                            WHERE field_id IN (SELECT field_id FROM fields WHERE site_key = ?)""", (key,)).fetchone()[0]
-        sites_breakdown[key] = {
-            "name": site["short_name"],
-            "fields": fc,
-            "observations": ic,
-            "area_ha": sum(f["area_ha"] for f in site.get("fields", [])),
-        }
-    conn.close()
-
-    total_area = sum(s["area_ha"] for s in sites_breakdown.values())
-    return jsonify({
-        "overview": {
-            "pilot_sites": len(PILOT_SITES),
-            "total_fields": field_count,
-            "total_area_ha": round(total_area, 1),
-            "spectral_observations": idx_count,
-            "anomalies_detected": anomaly_count,
-            "nudges_generated": nudge_count,
-            "weather_records": weather_count,
-            "yield_forecasts": yield_count,
-            "soil_moisture_predictions": smc_count,
-        },
-        "sites": sites_breakdown,
-        "models": {
-            "smc_cnn": {"accuracy": "96.2% R²", "status": "active"},
-            "pest_detector": {"accuracy": "93.7% F1", "status": "active"},
-            "yield_forecaster": {"accuracy": "91.4% R²", "status": "active"},
-        },
-        "generated_at": datetime.utcnow().isoformat() + "Z",
-    })
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1141,18 +1169,17 @@ def export_site_csv(site_key):
     for field in site.get("fields", []):
         ts = get_field_timeseries(field["id"], 30)
         latest = ts[-1] if ts else {}
-        pred = smc_model.predict(
-            ndvi=latest.get("ndvi", 0.4), ndwi=latest.get("ndwi", 0.0), bsi=latest.get("bsi", 0.1),
-            agro_zone=site.get("agro_zone", ""),
-        )
+        weather = get_weather_history(site_key, 30)
+        sowing = datetime.strptime(field.get("sowing_date", "2025-11-01"), "%Y-%m-%d")
+        das = (datetime.utcnow() - sowing).days
+        kwargs = _build_smc_kwargs(latest, weather, site, field, das)
+        pred = smc_model.predict(**kwargs)
         anomalies = pest_detector.detect_anomalies(
             ts or [], crop=field["crop"], sowing_date=field["sowing_date"]
         )
-        ndvi_series = [t["ndvi"] for t in (ts or []) if t.get("ndvi") is not None]
-        yf = yield_forecaster.forecast(
-            field["id"], field["crop"], ndvi_series, [pred["smc_percent"]],
-            get_weather_history(site_key, 30), field["sowing_date"], field["area_ha"]
-        )
+        yk = _build_yield_kwargs(ts or [], field["id"], field["crop"], field["sowing_date"], field["area_ha"], weather, anomaly_count=len(anomalies), irrigation_type=field.get("irrigation", "rainfed"))
+        yk["smc_series"] = [pred["smc_percent"]]
+        yf = yield_forecaster.forecast(**yk)
         writer.writerow([
             field["id"], field["name"], field["crop"], field["area_ha"],
             field["irrigation"], field["sowing_date"],
@@ -1330,10 +1357,11 @@ def compare_sites(site_a, site_b):
             if ts:
                 latest = ts[-1]
                 if latest.get("ndvi"): ndvi_vals.append(latest["ndvi"])
-                pred = smc_model.predict(
-                    ndvi=latest.get("ndvi", 0.4), ndwi=latest.get("ndwi", 0), bsi=latest.get("bsi", 0.1),
-                    agro_zone=site.get("agro_zone", ""),
-                )
+                weather_cmp = get_weather_history(key, 7)
+                sowing = datetime.strptime(field.get("sowing_date", "2025-11-01"), "%Y-%m-%d")
+                das = (datetime.utcnow() - sowing).days
+                kwargs = _build_smc_kwargs(latest, weather_cmp, site, field, das)
+                pred = smc_model.predict(**kwargs)
                 smc_vals.append(pred["smc_percent"])
                 anomalies = pest_detector.detect_anomalies(ts, field["crop"], field["sowing_date"])
                 anomaly_total += len(anomalies)
@@ -1391,10 +1419,11 @@ def alert_digest(site_key):
                 })
 
         # Soil moisture alert
-        pred = smc_model.predict(
-            ndvi=latest.get("ndvi", 0.4), ndwi=latest.get("ndwi", 0), bsi=latest.get("bsi", 0.1),
-            agro_zone=site.get("agro_zone", ""),
-        )
+        weather_7d = get_weather_history(site_key, 7)
+        sowing = datetime.strptime(field.get("sowing_date", "2025-11-01"), "%Y-%m-%d")
+        das = (datetime.utcnow() - sowing).days
+        kwargs = _build_smc_kwargs(latest, weather_7d, site, field, das)
+        pred = smc_model.predict(**kwargs)
         if pred["category"] in ("very_dry", "dry"):
             alerts.append({
                 "type": "low_moisture",
@@ -1432,549 +1461,6 @@ def alert_digest(site_key):
     })
 
 
-# ═══════════════════════════════════════════════════════════════
-#  Live Telemetry (Simulated)
-# ═══════════════════════════════════════════════════════════════
-
-@app.route("/api/telemetry/<site_key>")
-def live_telemetry(site_key):
-    """Simulated real-time telemetry from edge hub sensors."""
-    import random
-    site = PILOT_SITES.get(site_key)
-    if not site:
-        return jsonify({"error": "Site not found"}), 404
-
-    now = datetime.utcnow()
-    probes = site.get("soil_probes", 8)
-
-    # Simulate probe readings
-    probe_data = []
-    for i in range(1, probes + 1):
-        probe_data.append({
-            "probe_id": f"SP-{i:02d}",
-            "moisture_pct": round(random.uniform(15, 42), 1),
-            "temp_c": round(random.uniform(18, 34), 1),
-            "ec_ds_m": round(random.uniform(0.3, 2.5), 2),
-            "battery_pct": round(random.uniform(60, 100)),
-            "signal_rssi": round(random.uniform(-90, -40)),
-        })
-
-    # NPU stats
-    npu_stats = {
-        "model": ONNX_CONFIG["target_device"],
-        "utilization_pct": round(random.uniform(12, 65), 1),
-        "inference_ms": round(random.uniform(2.5, 18), 1),
-        "power_watts": round(random.uniform(8, 25), 1),
-        "temperature_c": round(random.uniform(42, 72), 1),
-        "total_inferences": random.randint(1200, 9999),
-        "tops_utilized": round(random.uniform(15, 55), 1),
-    }
-
-    # Edge hub status
-    hub = {
-        "cpu_pct": round(random.uniform(10, 55), 1),
-        "ram_pct": round(random.uniform(35, 70), 1),
-        "disk_pct": round(random.uniform(20, 60), 1),
-        "uptime_hours": round(random.uniform(24, 720)),
-        "last_sync": (now - timedelta(minutes=random.randint(1, 30))).strftime("%H:%M:%S"),
-        "network": "LoRa + 4G",
-    }
-
-    return jsonify({
-        "site": site["short_name"],
-        "timestamp": now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{random.randint(0,999):03d}Z",
-        "probes": probe_data,
-        "npu": npu_stats,
-        "hub": hub,
-        "satellite_pass": {
-            "next_pass": (now + timedelta(hours=random.randint(2, 12))).strftime("%Y-%m-%d %H:%M"),
-            "satellite": "Sentinel-2B",
-            "orbit": random.randint(30000, 40000),
-        },
-    })
-
-
-# ═══════════════════════════════════════════════════════════════
-#  Correlation Analysis
-# ═══════════════════════════════════════════════════════════════
-
-@app.route("/api/analytics/correlation/<site_key>")
-def correlation_analysis(site_key):
-    """Cross-correlation analysis between NDVI, SMC, and weather for all fields."""
-    import random, math
-    site = PILOT_SITES.get(site_key)
-    if not site:
-        return jsonify({"error": "Site not found"}), 404
-
-    fields = site.get("fields", [])
-    correlations = []
-    for f in fields:
-        fid = f["field_id"]
-        # Generate synthetic correlated time-series
-        n_points = 30
-        days = [(datetime.utcnow() - timedelta(days=30-i)).strftime("%Y-%m-%d") for i in range(n_points)]
-        base_ndvi = random.uniform(0.35, 0.65)
-        base_smc = random.uniform(22, 38)
-        base_temp = random.uniform(22, 32)
-        base_rain = random.uniform(0, 5)
-
-        ndvi_series = []
-        smc_series = []
-        temp_series = []
-        rain_series = []
-        for i in range(n_points):
-            rain = max(0, base_rain + random.gauss(0, 3))
-            smc = max(8, min(50, base_smc + rain * 0.8 + random.gauss(0, 2)))
-            ndvi = max(0.1, min(0.9, base_ndvi + (smc - 25) * 0.008 + random.gauss(0, 0.03)))
-            temp = base_temp + math.sin(i * 0.3) * 3 + random.gauss(0, 1.5)
-            ndvi_series.append(round(ndvi, 3))
-            smc_series.append(round(smc, 1))
-            temp_series.append(round(temp, 1))
-            rain_series.append(round(rain, 1))
-            base_smc = smc * 0.95  # decay
-            base_ndvi = ndvi
-
-        # Compute simple correlation coefficients
-        def pearson(x, y):
-            n = len(x)
-            mx, my = sum(x)/n, sum(y)/n
-            num = sum((a-mx)*(b-my) for a,b in zip(x,y))
-            den = (sum((a-mx)**2 for a in x) * sum((b-my)**2 for b in y)) ** 0.5
-            return round(num / den, 3) if den > 0 else 0
-
-        correlations.append({
-            "field_id": fid,
-            "crop": f.get("crop", "Unknown"),
-            "days": days,
-            "ndvi": ndvi_series,
-            "smc": smc_series,
-            "temperature": temp_series,
-            "rainfall": rain_series,
-            "r_ndvi_smc": pearson(ndvi_series, smc_series),
-            "r_ndvi_temp": pearson(ndvi_series, temp_series),
-            "r_smc_rain": pearson(smc_series, rain_series),
-            "r_ndvi_rain": pearson(ndvi_series, rain_series),
-        })
-
-    return jsonify({
-        "site": site["short_name"],
-        "fields": correlations,
-        "generated_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-    })
-
-
-# ═══════════════════════════════════════════════════════════════
-#  Risk Matrix
-# ═══════════════════════════════════════════════════════════════
-
-@app.route("/api/analytics/risk-matrix/<site_key>")
-def risk_matrix(site_key):
-    """Multi-factor risk assessment matrix per field."""
-    import random
-    site = PILOT_SITES.get(site_key)
-    if not site:
-        return jsonify({"error": "Site not found"}), 404
-
-    fields = site.get("fields", [])
-    matrix = []
-    for f in fields:
-        water_stress = round(random.uniform(0.1, 0.9), 2)
-        pest_risk = round(random.uniform(0.05, 0.85), 2)
-        nutrient_def = round(random.uniform(0.1, 0.7), 2)
-        weather_risk = round(random.uniform(0.1, 0.6), 2)
-        market_risk = round(random.uniform(0.15, 0.5), 2)
-
-        composite = round(water_stress * 0.3 + pest_risk * 0.25 + nutrient_def * 0.2 + weather_risk * 0.15 + market_risk * 0.1, 3)
-        level = "critical" if composite > 0.6 else "high" if composite > 0.45 else "medium" if composite > 0.3 else "low"
-
-        matrix.append({
-            "field_id": f["field_id"],
-            "crop": f.get("crop", "Unknown"),
-            "area_ha": f.get("area_ha", 1.0),
-            "factors": {
-                "water_stress": {"score": water_stress, "weight": 0.30, "icon": "💧"},
-                "pest_pressure": {"score": pest_risk, "weight": 0.25, "icon": "🐛"},
-                "nutrient_deficit": {"score": nutrient_def, "weight": 0.20, "icon": "🧪"},
-                "weather_exposure": {"score": weather_risk, "weight": 0.15, "icon": "⛈️"},
-                "market_volatility": {"score": market_risk, "weight": 0.10, "icon": "📉"},
-            },
-            "composite_score": composite,
-            "risk_level": level,
-            "recommended_actions": _risk_actions(level, water_stress, pest_risk),
-        })
-
-    # Sort by composite score descending
-    matrix.sort(key=lambda x: x["composite_score"], reverse=True)
-
-    return jsonify({
-        "site": site["short_name"],
-        "fields": matrix,
-        "risk_summary": {
-            "critical": sum(1 for m in matrix if m["risk_level"] == "critical"),
-            "high": sum(1 for m in matrix if m["risk_level"] == "high"),
-            "medium": sum(1 for m in matrix if m["risk_level"] == "medium"),
-            "low": sum(1 for m in matrix if m["risk_level"] == "low"),
-        },
-        "generated_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-    })
-
-
-def _risk_actions(level, water, pest):
-    actions = []
-    if water > 0.6:
-        actions.append("Activate drip irrigation immediately")
-    if water > 0.4:
-        actions.append("Schedule supplemental irrigation within 48h")
-    if pest > 0.6:
-        actions.append("Deploy IPM scouts — high pest anomaly")
-    if pest > 0.3:
-        actions.append("Apply preventive foliar spray")
-    if level == "critical":
-        actions.append("Escalate to district agronomist")
-    if level in ("critical", "high"):
-        actions.append("Increase monitoring frequency to daily")
-    if not actions:
-        actions.append("Continue standard monitoring protocol")
-    return actions
-
-
-# ═══════════════════════════════════════════════════════════════
-#  Field Scoring (Data Quality + Health)
-# ═══════════════════════════════════════════════════════════════
-
-@app.route("/api/analytics/field-scores/<site_key>")
-def field_scores(site_key):
-    """Composite health + data quality score per field."""
-    import random
-    site = PILOT_SITES.get(site_key)
-    if not site:
-        return jsonify({"error": "Site not found"}), 404
-
-    fields = site.get("fields", [])
-    scores = []
-    for f in fields:
-        ndvi_health = round(random.uniform(55, 98), 1)
-        moisture_health = round(random.uniform(50, 95), 1)
-        growth_stage_health = round(random.uniform(60, 99), 1)
-        data_completeness = round(random.uniform(70, 100), 1)
-        sensor_coverage = round(random.uniform(65, 100), 1)
-        temporal_density = round(random.uniform(60, 100), 1)
-
-        health_score = round((ndvi_health + moisture_health + growth_stage_health) / 3, 1)
-        data_quality = round((data_completeness + sensor_coverage + temporal_density) / 3, 1)
-        overall = round(health_score * 0.6 + data_quality * 0.4, 1)
-
-        scores.append({
-            "field_id": f["field_id"],
-            "crop": f.get("crop", "Unknown"),
-            "area_ha": f.get("area_ha", 1.0),
-            "health": {
-                "ndvi": ndvi_health,
-                "moisture": moisture_health,
-                "growth": growth_stage_health,
-                "composite": health_score,
-            },
-            "data_quality": {
-                "completeness": data_completeness,
-                "sensor_coverage": sensor_coverage,
-                "temporal_density": temporal_density,
-                "composite": data_quality,
-            },
-            "overall_score": overall,
-            "grade": "A+" if overall >= 90 else "A" if overall >= 80 else "B" if overall >= 70 else "C" if overall >= 60 else "D",
-            "trend": random.choice(["improving", "stable", "declining"]),
-        })
-
-    scores.sort(key=lambda x: x["overall_score"], reverse=True)
-
-    return jsonify({
-        "site": site["short_name"],
-        "fields": scores,
-        "site_average": round(sum(s["overall_score"] for s in scores) / len(scores), 1) if scores else 0,
-        "generated_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-    })
-
-
-# ═══════════════════════════════════════════════════════════════
-#  Trend Analysis (Moving Averages)
-# ═══════════════════════════════════════════════════════════════
-
-@app.route("/api/analytics/trends/<site_key>")
-def trend_analysis(site_key):
-    """Multi-variable trend analysis with moving averages and derivatives."""
-    import random, math
-    site = PILOT_SITES.get(site_key)
-    if not site:
-        return jsonify({"error": "Site not found"}), 404
-
-    n_points = 60
-    now = datetime.utcnow()
-    days = [(now - timedelta(days=n_points - i)).strftime("%Y-%m-%d") for i in range(n_points)]
-
-    # Generate site-level aggregate time series
-    base = random.uniform(0.35, 0.55)
-    ndvi_raw = []
-    smc_raw = []
-    et0_raw = []
-    for i in range(n_points):
-        seasonal = math.sin((i / n_points) * math.pi * 2) * 0.12
-        ndvi_raw.append(round(base + seasonal + random.gauss(0, 0.03), 3))
-        smc_raw.append(round(25 + seasonal * 80 + random.gauss(0, 3), 1))
-        et0_raw.append(round(3.5 + math.sin(i * 0.15) * 1.5 + random.gauss(0, 0.4), 2))
-
-    def moving_avg(data, window):
-        result = []
-        for i in range(len(data)):
-            start = max(0, i - window + 1)
-            result.append(round(sum(data[start:i+1]) / (i - start + 1), 3))
-        return result
-
-    def derivative(data):
-        return [0] + [round(data[i] - data[i-1], 4) for i in range(1, len(data))]
-
-    return jsonify({
-        "site": site["short_name"],
-        "days": days,
-        "ndvi": {
-            "raw": ndvi_raw,
-            "ma7": moving_avg(ndvi_raw, 7),
-            "ma14": moving_avg(ndvi_raw, 14),
-            "derivative": derivative(ndvi_raw),
-        },
-        "smc": {
-            "raw": smc_raw,
-            "ma7": moving_avg(smc_raw, 7),
-            "ma14": moving_avg(smc_raw, 14),
-            "derivative": derivative(smc_raw),
-        },
-        "et0": {
-            "raw": et0_raw,
-            "ma7": moving_avg(et0_raw, 7),
-        },
-        "insights": _generate_trend_insights(ndvi_raw, smc_raw),
-        "generated_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-    })
-
-
-def _generate_trend_insights(ndvi, smc):
-    insights = []
-    # Compare last 7 days vs previous 7 days
-    recent_ndvi = sum(ndvi[-7:]) / 7
-    prev_ndvi = sum(ndvi[-14:-7]) / 7
-    ndvi_change = ((recent_ndvi - prev_ndvi) / prev_ndvi) * 100 if prev_ndvi else 0
-
-    recent_smc = sum(smc[-7:]) / 7
-    prev_smc = sum(smc[-14:-7]) / 7
-    smc_change = ((recent_smc - prev_smc) / prev_smc) * 100 if prev_smc else 0
-
-    if ndvi_change > 5:
-        insights.append({"type": "positive", "text": f"NDVI up {ndvi_change:.1f}% (7d) — vegetation vigor improving"})
-    elif ndvi_change < -5:
-        insights.append({"type": "warning", "text": f"NDVI down {abs(ndvi_change):.1f}% (7d) — vegetation stress detected"})
-    else:
-        insights.append({"type": "neutral", "text": f"NDVI stable ({ndvi_change:+.1f}%) — normal growth trajectory"})
-
-    if smc_change < -10:
-        insights.append({"type": "warning", "text": f"Soil moisture declining {abs(smc_change):.1f}% — consider irrigation"})
-    elif smc_change > 10:
-        insights.append({"type": "positive", "text": f"Soil moisture rising {smc_change:.1f}% — recent rainfall absorbed"})
-
-    insights.append({"type": "info", "text": f"Current NDVI: {ndvi[-1]:.3f} | SMC: {smc[-1]:.1f}%"})
-    return insights
-
-
-# ═══════════════════════════════════════════════════════════════
-#  NPU Performance Monitor
-# ═══════════════════════════════════════════════════════════════
-
-@app.route("/api/analytics/npu-performance")
-def npu_performance():
-    """Detailed NPU/model performance metrics and history."""
-    import random
-    now = datetime.utcnow()
-    n_hours = 24
-
-    timeline = []
-    for h in range(n_hours):
-        t = now - timedelta(hours=n_hours - h)
-        timeline.append({
-            "timestamp": t.strftime("%H:%M"),
-            "utilization": round(random.uniform(8, 65), 1),
-            "power_watts": round(random.uniform(8, 28), 1),
-            "temp_c": round(random.uniform(38, 75), 1),
-            "inferences_per_min": random.randint(5, 45),
-            "latency_ms": round(random.uniform(2.1, 22), 1),
-        })
-
-    models_perf = {
-        "smc_cnn": {
-            "name": "Soil Moisture CNN",
-            "accuracy": "R² = 0.962",
-            "avg_latency_ms": round(random.uniform(3.5, 8.2), 1),
-            "p95_latency_ms": round(random.uniform(8, 18), 1),
-            "throughput": round(random.uniform(12, 35), 1),
-            "total_inferences": random.randint(5000, 25000),
-            "last_retrained": (now - timedelta(days=random.randint(3, 30))).strftime("%Y-%m-%d"),
-            "quantization": "INT8 PTQ",
-            "status": "active",
-            "input_shape": "[1, 5, 5, 32, 32]",
-            "params_m": "2.4M",
-            "flops_g": "1.8G",
-        },
-        "pest_detector": {
-            "name": "Pest Anomaly Detector",
-            "accuracy": "F1 = 0.937",
-            "avg_latency_ms": round(random.uniform(1.5, 5), 1),
-            "p95_latency_ms": round(random.uniform(4, 12), 1),
-            "throughput": round(random.uniform(20, 60), 1),
-            "total_inferences": random.randint(8000, 40000),
-            "last_retrained": (now - timedelta(days=random.randint(5, 45))).strftime("%Y-%m-%d"),
-            "quantization": "INT8 PTQ",
-            "status": "active",
-            "input_shape": "[1, 6]",
-            "params_m": "0.3M",
-            "flops_g": "0.1G",
-        },
-        "yield_forecaster": {
-            "name": "Yield Forecaster",
-            "accuracy": "R² = 0.914",
-            "avg_latency_ms": round(random.uniform(2, 6), 1),
-            "p95_latency_ms": round(random.uniform(5, 14), 1),
-            "throughput": round(random.uniform(15, 45), 1),
-            "total_inferences": random.randint(3000, 15000),
-            "last_retrained": (now - timedelta(days=random.randint(7, 60))).strftime("%Y-%m-%d"),
-            "quantization": "INT8 PTQ",
-            "status": "active",
-            "input_shape": "[1, 12]",
-            "params_m": "1.1M",
-            "flops_g": "0.5G",
-        },
-    }
-
-    return jsonify({
-        "device": ONNX_CONFIG["target_device"],
-        "npu_arch": "XDNA™ 2 (Ryzen AI)",
-        "tops_peak": 50,
-        "tops_current": round(random.uniform(15, 45), 1),
-        "timeline": timeline,
-        "models": models_perf,
-        "system": {
-            "onnx_opset": ONNX_CONFIG["opset"],
-            "execution_provider": "VitisAIExecutionProvider",
-            "fallback": "CPUExecutionProvider",
-            "memory_allocated_mb": round(random.uniform(120, 380), 1),
-            "memory_peak_mb": round(random.uniform(400, 600), 1),
-        },
-        "generated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
-    })
-
-
-# ═══════════════════════════════════════════════════════════════
-#  Heatmap Data (Field Grid)
-# ═══════════════════════════════════════════════════════════════
-
-@app.route("/api/analytics/heatmap/<site_key>")
-def field_heatmap(site_key):
-    """Grid-based heatmap data for NDVI, SMC, and risk across the site."""
-    import random
-    site = PILOT_SITES.get(site_key)
-    if not site:
-        return jsonify({"error": "Site not found"}), 404
-
-    fields = site.get("fields", [])
-    grid_size = 8  # 8x8 grid per field
-    heatmaps = []
-
-    for f in fields:
-        ndvi_grid = []
-        smc_grid = []
-        risk_grid = []
-        base_ndvi = random.uniform(0.3, 0.7)
-        base_smc = random.uniform(18, 40)
-
-        for r in range(grid_size):
-            ndvi_row = []
-            smc_row = []
-            risk_row = []
-            for c in range(grid_size):
-                ndvi = max(0, min(1, base_ndvi + random.gauss(0, 0.08)))
-                smc = max(5, min(50, base_smc + random.gauss(0, 5)))
-                risk = round(max(0, min(1, (1 - ndvi) * 0.5 + (1 - smc / 50) * 0.3 + random.uniform(0, 0.2))), 2)
-                ndvi_row.append(round(ndvi, 3))
-                smc_row.append(round(smc, 1))
-                risk_row.append(risk)
-            ndvi_grid.append(ndvi_row)
-            smc_grid.append(smc_row)
-            risk_grid.append(risk_row)
-
-        heatmaps.append({
-            "field_id": f["field_id"],
-            "crop": f.get("crop", "Unknown"),
-            "grid_size": grid_size,
-            "ndvi": ndvi_grid,
-            "smc": smc_grid,
-            "risk": risk_grid,
-        })
-
-    return jsonify({
-        "site": site["short_name"],
-        "fields": heatmaps,
-        "generated_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-    })
-
-
-# ═══════════════════════════════════════════════════════════════
-#  Activity Log
-# ═══════════════════════════════════════════════════════════════
-
-@app.route("/api/analytics/activity-log/<site_key>")
-def activity_log(site_key):
-    """Recent platform activity log for a site."""
-    import random
-    site = PILOT_SITES.get(site_key)
-    if not site:
-        return jsonify({"error": "Site not found"}), 404
-
-    now = datetime.utcnow()
-    actions = [
-        ("Pipeline executed", "pipeline", "Spectral indices computed for {n} fields"),
-        ("Anomaly detected", "alert", "NDVI drop >{d}% on {f}"),
-        ("Nudge sent", "nudge", "Irrigation advisory dispatched via SMS"),
-        ("Model inference", "model", "SMC prediction completed in {t}ms"),
-        ("Weather updated", "weather", "7-day forecast refreshed from Open-Meteo"),
-        ("Satellite pass", "satellite", "Sentinel-2B captured tile at {lat}°N"),
-        ("Yield forecast", "forecast", "Updated yield estimate for {f}"),
-        ("Probe reading", "sensor", "Soil probe SP-{p} reported {m}% moisture"),
-        ("Data export", "export", "CSV exported with {r} records"),
-        ("Health check", "system", "All systems operational — uptime {u}h"),
-    ]
-
-    log = []
-    for i in range(25):
-        action = random.choice(actions)
-        t = now - timedelta(minutes=random.randint(1, 1440))
-        log.append({
-            "timestamp": t.strftime("%Y-%m-%d %H:%M:%S"),
-            "action": action[0],
-            "category": action[1],
-            "detail": action[2].format(
-                n=random.randint(3, 8), d=random.randint(5, 20),
-                f=random.choice(site.get("fields", [{"field_id": "F-001"}]))["field_id"],
-                t=round(random.uniform(3, 18), 1),
-                lat=round(site["lat"] + random.uniform(-0.1, 0.1), 2),
-                p=random.randint(1, 20), m=round(random.uniform(15, 42), 1),
-                r=random.randint(50, 500), u=random.randint(24, 720)
-            ),
-        })
-
-    log.sort(key=lambda x: x["timestamp"], reverse=True)
-
-    return jsonify({
-        "site": site["short_name"],
-        "entries": log,
-        "generated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
-    })
-
 
 # ═══════════════════════════════════════════════════════════════
 #  Run
@@ -1986,5 +1472,5 @@ if __name__ == "__main__":
     print(f"  [*] {APP_DESCRIPTION}")
     print(f"  [*] Pilot sites: {', '.join(s['short_name'] for s in PILOT_SITES.values())}")
     print(f"  [*] Target hardware: {ONNX_CONFIG['target_device']}")
-    print(f"  [*] API endpoints: 35+\n")
+    print(f"  [*] API endpoints: 25+\n")
     app.run(host="0.0.0.0", port=port, debug=DEBUG_MODE)

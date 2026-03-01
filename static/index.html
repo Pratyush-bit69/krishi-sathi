@@ -346,17 +346,7 @@
                         </div>
                     </div>
 
-                    <!-- Live Telemetry -->
-                    <div class="farmer-card telemetry-card glass-card" style="grid-column: 1 / -1;">
-                        <div class="farmer-card-header">
-                            <span class="farmer-card-icon">📡</span>
-                            <h2>Live Edge Hub Telemetry</h2>
-                            <span class="live-badge"><span class="live-dot"></span> LIVE</span>
-                        </div>
-                        <div class="telemetry-wrap" id="telemetryWrap">
-                            <div class="loading-placeholder">Connecting to edge hub…</div>
-                        </div>
-                    </div>
+
 
                     <!-- Alert Digest -->
                     <div class="farmer-card alerts-card glass-card" style="grid-column: 1 / -1;">
@@ -385,16 +375,7 @@
                         </div>
                     </div>
 
-                    <!-- Platform Stats -->
-                    <div class="farmer-card stats-card glass-card" style="grid-column: 1 / -1;">
-                        <div class="farmer-card-header">
-                            <span class="farmer-card-icon">⚙️</span>
-                            <h2>Platform Statistics</h2>
-                        </div>
-                        <div class="platform-stats-wrap" id="platformStatsWrap">
-                            <div class="loading-placeholder">Loading stats…</div>
-                        </div>
-                    </div>
+
                 </div>
             </div>
 
@@ -449,9 +430,7 @@
                         <button class="tab" data-tab="moisture" onclick="switchTab('moisture')">💧 Moisture</button>
                         <button class="tab" data-tab="anomalies" onclick="switchTab('anomalies')">🐛 Anomalies</button>
                         <button class="tab" data-tab="yield" onclick="switchTab('yield')">📊 Yield</button>
-                        <button class="tab" data-tab="analytics" onclick="switchTab('analytics')">📈 Analytics</button>
-                        <button class="tab" data-tab="risk" onclick="switchTab('risk')">🛡️ Risk</button>
-                        <button class="tab" data-tab="npu" onclick="switchTab('npu')">⚡ NPU</button>
+
                         <button class="tab" data-tab="weather" onclick="switchTab('weather')">🌤️ Weather</button>
                         <button class="tab" data-tab="satellite" onclick="switchTab('satellite')">🛰️ Satellite</button>
                     </div>
@@ -537,181 +516,6 @@
                         </div>
                     </div>
 
-                    <!-- ═══ ANALYTICS TAB ═══ -->
-                    <div class="tab-panel" id="panel-analytics">
-
-                        <!-- Correlation Matrix -->
-                        <div class="card glass-card">
-                            <div class="card-header">
-                                <h2>Cross-Correlation Analysis</h2>
-                                <button class="btn-sm btn-glow" onclick="loadCorrelation()">Refresh</button>
-                            </div>
-                            <div class="card-body" id="correlationPanel">
-                                <div class="loading-placeholder">Computing cross-correlations…</div>
-                            </div>
-                        </div>
-
-                        <!-- Correlation Chart -->
-                        <div class="card glass-card">
-                            <div class="card-header">
-                                <h2>NDVI vs Soil Moisture Scatter</h2>
-                                <select id="corrFieldSelect" class="field-select" onchange="renderCorrelationChart()">
-                                    <option value="0">First Field</option>
-                                </select>
-                            </div>
-                            <div class="chart-container">
-                                <canvas id="correlationChart"></canvas>
-                            </div>
-                        </div>
-
-                        <!-- Trend Analysis -->
-                        <div class="card glass-card">
-                            <div class="card-header">
-                                <h2>60-Day Trend Analysis</h2>
-                                <div class="trend-toggles">
-                                    <label class="toggle-label"><input type="checkbox" id="trendNDVI" checked onchange="renderTrendChart()"> NDVI</label>
-                                    <label class="toggle-label"><input type="checkbox" id="trendSMC" checked onchange="renderTrendChart()"> SMC</label>
-                                    <label class="toggle-label"><input type="checkbox" id="trendMA" checked onchange="renderTrendChart()"> MA-7</label>
-                                </div>
-                            </div>
-                            <div class="chart-container chart-container-wide">
-                                <canvas id="trendChart"></canvas>
-                            </div>
-                        </div>
-
-                        <!-- Trend Insights -->
-                        <div class="card glass-card">
-                            <div class="card-header">
-                                <h2>AI Insights</h2>
-                            </div>
-                            <div class="card-body" id="trendInsights">
-                                <div class="loading-placeholder">Generating trend insights…</div>
-                            </div>
-                        </div>
-
-                        <!-- Field Heatmap -->
-                        <div class="card glass-card">
-                            <div class="card-header">
-                                <h2>Spatial Heatmap</h2>
-                                <select id="heatmapFieldSelect" class="field-select" onchange="renderHeatmapGrid()">
-                                    <option value="0">First Field</option>
-                                </select>
-                                <select id="heatmapVariable" class="field-select" onchange="renderHeatmapGrid()">
-                                    <option value="ndvi">NDVI</option>
-                                    <option value="smc">Soil Moisture</option>
-                                    <option value="risk">Risk</option>
-                                </select>
-                            </div>
-                            <div class="card-body" id="heatmapPanel">
-                                <div class="loading-placeholder">Loading spatial data…</div>
-                            </div>
-                        </div>
-
-                        <!-- Activity Log -->
-                        <div class="card glass-card">
-                            <div class="card-header">
-                                <h2>Activity Log</h2>
-                                <button class="btn-sm btn-glow" onclick="loadActivityLog()">Refresh</button>
-                            </div>
-                            <div class="card-body activity-log-scroll" id="activityLogPanel">
-                                <div class="loading-placeholder">Loading activity…</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- ═══ RISK TAB ═══ -->
-                    <div class="tab-panel" id="panel-risk">
-
-                        <!-- Risk Summary -->
-                        <div class="card glass-card">
-                            <div class="card-header">
-                                <h2>Risk Assessment Matrix</h2>
-                                <button class="btn-sm btn-glow" onclick="loadRiskMatrix()">Refresh</button>
-                            </div>
-                            <div class="card-body" id="riskSummaryPanel">
-                                <div class="loading-placeholder">Computing risk matrix…</div>
-                            </div>
-                        </div>
-
-                        <!-- Risk Detail per Field -->
-                        <div class="card glass-card">
-                            <div class="card-header">
-                                <h2>Field Risk Breakdown</h2>
-                            </div>
-                            <div class="card-body" id="riskDetailPanel">
-                                <div class="loading-placeholder">Analyzing risk factors…</div>
-                            </div>
-                        </div>
-
-                        <!-- Field Health Scores -->
-                        <div class="card glass-card">
-                            <div class="card-header">
-                                <h2>Field Health Scorecard</h2>
-                                <button class="btn-sm btn-glow" onclick="loadFieldScores()">Refresh</button>
-                            </div>
-                            <div class="card-body" id="fieldScoresPanel">
-                                <div class="loading-placeholder">Computing health scores…</div>
-                            </div>
-                        </div>
-
-                        <!-- Risk Chart -->
-                        <div class="card glass-card">
-                            <div class="card-header">
-                                <h2>Risk Factor Radar</h2>
-                                <select id="riskRadarSelect" class="field-select" onchange="renderRiskRadar()">
-                                    <option value="0">First Field</option>
-                                </select>
-                            </div>
-                            <div class="chart-container">
-                                <canvas id="riskRadarChart"></canvas>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- ═══ NPU TAB ═══ -->
-                    <div class="tab-panel" id="panel-npu">
-
-                        <!-- NPU Overview -->
-                        <div class="card glass-card">
-                            <div class="card-header">
-                                <h2>AMD Ryzen AI NPU Monitor</h2>
-                                <span class="live-badge-sm">⚡ LIVE</span>
-                            </div>
-                            <div class="card-body" id="npuOverviewPanel">
-                                <div class="loading-placeholder">Querying NPU metrics…</div>
-                            </div>
-                        </div>
-
-                        <!-- NPU Timeline Chart -->
-                        <div class="card glass-card">
-                            <div class="card-header">
-                                <h2>24h Utilization Timeline</h2>
-                            </div>
-                            <div class="chart-container chart-container-wide">
-                                <canvas id="npuTimelineChart"></canvas>
-                            </div>
-                        </div>
-
-                        <!-- Model Performance -->
-                        <div class="card glass-card">
-                            <div class="card-header">
-                                <h2>Model Performance Cards</h2>
-                            </div>
-                            <div class="card-body" id="npuModelsPanel">
-                                <div class="loading-placeholder">Loading model metrics…</div>
-                            </div>
-                        </div>
-
-                        <!-- NPU Latency Chart -->
-                        <div class="card glass-card">
-                            <div class="card-header">
-                                <h2>Inference Latency Distribution</h2>
-                            </div>
-                            <div class="chart-container">
-                                <canvas id="npuLatencyChart"></canvas>
-                            </div>
-                        </div>
-                    </div>
 
                     <!-- Weather Tab -->
                     <div class="tab-panel" id="panel-weather">

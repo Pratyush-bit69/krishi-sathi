@@ -56,15 +56,24 @@ def init_pipeline_db():
             expires_at TEXT
         );
 
-        -- Computed spectral indices per field per date
+        -- Computed spectral indices per field per date (15 indices)
         CREATE TABLE IF NOT EXISTS spectral_indices (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             field_id TEXT NOT NULL,
             date TEXT NOT NULL,
             ndvi REAL,
             ndwi REAL,
+            evi REAL,
+            savi REAL,
+            msavi REAL,
+            ndre REAL,
+            gndvi REAL,
+            lswi REAL,
+            nbr REAL,
             reci REAL,
             bsi REAL,
+            cig REAL,
+            ndmi REAL,
             cloud_cover REAL,
             source_scene TEXT,
             computed_at TEXT DEFAULT (datetime('now')),
@@ -397,6 +406,87 @@ def compute_bsi(blue: float, red: float, nir: float, swir: float) -> float:
     return round(num / denom, 4)
 
 
+def compute_evi(nir: float, red: float, blue: float) -> float:
+    """Enhanced Vegetation Index = 2.5 * (NIR - Red) / (NIR + 6*Red - 7.5*Blue + 1).
+    Uses B08, B04, B02. More sensitive than NDVI in high-biomass areas."""
+    denom = nir + 6.0 * red - 7.5 * blue + 1.0
+    if denom == 0:
+        return 0.0
+    return round(2.5 * (nir - red) / denom, 4)
+
+
+def compute_savi(nir: float, red: float, L: float = 0.5) -> float:
+    """Soil-Adjusted Vegetation Index = ((NIR - Red) / (NIR + Red + L)) * (1 + L).
+    Uses B08, B04. Better than NDVI in sparse vegetation / exposed soil."""
+    denom = nir + red + L
+    if denom == 0:
+        return 0.0
+    return round((nir - red) / denom * (1.0 + L), 4)
+
+
+def compute_msavi(nir: float, red: float) -> float:
+    """Modified Soil-Adjusted Vegetation Index (second formula).
+    MSAVI = (2*NIR + 1 - sqrt((2*NIR+1)^2 - 8*(NIR-Red))) / 2.
+    Uses B08, B04. Self-adjusting L parameter."""
+    val = (2.0 * nir + 1.0) ** 2 - 8.0 * (nir - red)
+    if val < 0:
+        val = 0.0
+    return round((2.0 * nir + 1.0 - val ** 0.5) / 2.0, 4)
+
+
+def compute_ndre(nir: float, red_edge1: float) -> float:
+    """Normalized Difference Red Edge Index = (NIR - RedEdge1) / (NIR + RedEdge1).
+    Uses B08 and B05. Early stress detection in canopy chlorophyll."""
+    denom = nir + red_edge1
+    if denom == 0:
+        return 0.0
+    return round((nir - red_edge1) / denom, 4)
+
+
+def compute_gndvi(nir: float, green: float) -> float:
+    """Green NDVI = (NIR - Green) / (NIR + Green).
+    Uses B08 and B03. Sensitive to chlorophyll concentration."""
+    denom = nir + green
+    if denom == 0:
+        return 0.0
+    return round((nir - green) / denom, 4)
+
+
+def compute_lswi(nir: float, swir1: float) -> float:
+    """Land Surface Water Index = (NIR - SWIR1) / (NIR + SWIR1).
+    Uses B08 and B11. Sensitive to leaf and soil water content."""
+    denom = nir + swir1
+    if denom == 0:
+        return 0.0
+    return round((nir - swir1) / denom, 4)
+
+
+def compute_nbr(nir: float, swir2: float) -> float:
+    """Normalized Burn Ratio = (NIR - SWIR2) / (NIR + SWIR2).
+    Uses B08 and B12. Detects burned/stressed areas."""
+    denom = nir + swir2
+    if denom == 0:
+        return 0.0
+    return round((nir - swir2) / denom, 4)
+
+
+def compute_cig(nir: float, green: float) -> float:
+    """Chlorophyll Index Green = (NIR / Green) - 1.
+    Uses B08 and B03. Estimates chlorophyll content in leaves."""
+    if green == 0:
+        return 0.0
+    return round((nir / green) - 1.0, 4)
+
+
+def compute_ndmi(nir_narrow: float, swir1: float) -> float:
+    """Normalized Difference Moisture Index = (B8A - B11) / (B8A + B11).
+    Uses B8A and B11. Sensitive to vegetation water content."""
+    denom = nir_narrow + swir1
+    if denom == 0:
+        return 0.0
+    return round((nir_narrow - swir1) / denom, 4)
+
+
 def classify_ndvi(ndvi: float) -> str:
     """Classify NDVI into vegetation category."""
     for category, (low, high) in NDVI_THRESHOLDS.items():
@@ -463,15 +553,50 @@ def generate_simulated_indices(field_id: str, site_key: str, start_date: str, nu
         base_ndvi = 0.15 + kc * 0.55
         ndvi = np.clip(base_ndvi + rng.normal(0, 0.03), -0.1, 0.95)
 
+        # EVI (atmosphere-corrected, slightly lower than NDVI, less saturated at high LAI)
+        base_evi = 0.12 + kc * 0.50
+        evi = np.clip(base_evi + rng.normal(0, 0.025), -0.1, 0.90)
+
+        # SAVI (soil-adjusted, similar to NDVI but lower in sparse veg)
+        base_savi = 0.10 + kc * 0.48
+        savi = np.clip(base_savi + rng.normal(0, 0.03), -0.1, 0.85)
+
+        # MSAVI (modified SAVI, self-adjusting)
+        base_msavi = 0.10 + kc * 0.47
+        msavi = np.clip(base_msavi + rng.normal(0, 0.03), -0.1, 0.85)
+
         # NDWI correlated with NDVI but with moisture component
         base_ndwi = -0.1 + kc * 0.35
         ndwi = np.clip(base_ndwi + rng.normal(0, 0.04), -0.5, 0.6)
 
-        # RECI  
+        # NDRE (red edge, sensitive to chlorophyll, peaks during active growth)
+        base_ndre = 0.10 + kc * 0.30
+        ndre = np.clip(base_ndre + rng.normal(0, 0.025), -0.1, 0.6)
+
+        # GNDVI (green NDVI, higher than NDVI in green vegetation)
+        base_gndvi = 0.20 + kc * 0.45
+        gndvi = np.clip(base_gndvi + rng.normal(0, 0.03), -0.1, 0.85)
+
+        # LSWI (land surface water, correlated with NDWI)
+        base_lswi = -0.08 + kc * 0.30
+        lswi = np.clip(base_lswi + rng.normal(0, 0.04), -0.5, 0.6)
+
+        # NBR (normalized burn ratio, higher for healthy vegetation)
+        base_nbr = 0.10 + kc * 0.40
+        nbr = np.clip(base_nbr + rng.normal(0, 0.03), -0.5, 0.8)
+
+        # RECI (red edge chlorophyll index)
         reci = np.clip(kc * 2.5 + rng.normal(0, 0.2), 0, 8)
 
         # BSI inversely proportional to vegetation
         bsi = np.clip(0.3 - kc * 0.25 + rng.normal(0, 0.03), -0.3, 0.5)
+
+        # CIG (chlorophyll index green)
+        cig = np.clip(kc * 2.0 + rng.normal(0, 0.15), 0, 6)
+
+        # NDMI (normalized difference moisture index, similar to NDWI but using B8A)
+        base_ndmi = -0.05 + kc * 0.30
+        ndmi = np.clip(base_ndmi + rng.normal(0, 0.035), -0.5, 0.6)
 
         # Simulate occasional cloud cover
         cloud = max(0, rng.normal(15, 20))
@@ -483,8 +608,17 @@ def generate_simulated_indices(field_id: str, site_key: str, start_date: str, nu
             "date": date.strftime("%Y-%m-%d"),
             "ndvi": round(float(ndvi), 4),
             "ndwi": round(float(ndwi), 4),
+            "evi": round(float(evi), 4),
+            "savi": round(float(savi), 4),
+            "msavi": round(float(msavi), 4),
+            "ndre": round(float(ndre), 4),
+            "gndvi": round(float(gndvi), 4),
+            "lswi": round(float(lswi), 4),
+            "nbr": round(float(nbr), 4),
             "reci": round(float(reci), 4),
             "bsi": round(float(bsi), 4),
+            "cig": round(float(cig), 4),
+            "ndmi": round(float(ndmi), 4),
             "cloud_cover": round(float(min(cloud, 100)), 1),
             "ndvi_class": classify_ndvi(float(ndvi)),
             "ndwi_class": classify_ndwi(float(ndwi)),
@@ -494,27 +628,33 @@ def generate_simulated_indices(field_id: str, site_key: str, start_date: str, nu
 
 
 def store_indices(records: List[Dict]):
-    """Store computed spectral indices in database."""
+    """Store computed spectral indices (15 indices) in database."""
     conn = get_db()
     for r in records:
         conn.execute("""
             INSERT OR REPLACE INTO spectral_indices 
-            (field_id, date, ndvi, ndwi, reci, bsi, cloud_cover, source_scene)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (field_id, date, ndvi, ndwi, evi, savi, msavi, ndre, gndvi,
+             lswi, nbr, reci, bsi, cig, ndmi, cloud_cover, source_scene)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            r["field_id"], r["date"], r["ndvi"], r["ndwi"],
-            r.get("reci"), r.get("bsi"), r.get("cloud_cover"), r.get("source_scene", "simulated")
+            r["field_id"], r["date"],
+            r.get("ndvi"), r.get("ndwi"), r.get("evi"), r.get("savi"),
+            r.get("msavi"), r.get("ndre"), r.get("gndvi"), r.get("lswi"),
+            r.get("nbr"), r.get("reci"), r.get("bsi"), r.get("cig"),
+            r.get("ndmi"), r.get("cloud_cover"),
+            r.get("source_scene", "simulated")
         ))
     conn.commit()
     conn.close()
 
 
 def get_field_timeseries(field_id: str, days: int = 90) -> List[Dict]:
-    """Get spectral index time series for a field."""
+    """Get spectral index time series for a field (all 15 indices)."""
     conn = get_db()
     cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
     rows = conn.execute("""
-        SELECT date, ndvi, ndwi, reci, bsi, cloud_cover 
+        SELECT date, ndvi, ndwi, evi, savi, msavi, ndre, gndvi,
+               lswi, nbr, reci, bsi, cig, ndmi, cloud_cover
         FROM spectral_indices 
         WHERE field_id = ? AND date >= ?
         ORDER BY date ASC
