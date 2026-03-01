@@ -19,6 +19,22 @@ The platform processes **Sentinel-2 multispectral imagery** through a pipeline o
 
 ---
 
+## Future Scalability & Production Roadmap
+
+As Krishi-Sathi scales from pilot to production, the platform roadmap is designed for progressive capability expansion:
+
+- **Google Maps Engine Integration** — For near-term production deployment, we intend to integrate **Google Maps Engine** to enable highly precise, field-level tracking and geospatial analytics beyond what current open-source tile layers offer. This will allow agronomists and farm managers to pinpoint micro-zones within fields with satellite-grade accuracy.
+
+- **Proprietary Tracking Points Map System** — As we scale further, we plan to build our own **proprietary map and tracking system** purpose-built for agriculture. This system will be simpler to use, more intuitive for drawing field boundaries and observation boxes, and far more advanced than generic mapping tools — tailored specifically for crop monitoring, soil sampling grids, and pest surveillance zones.
+
+- **Dedicated Mobile & Web Apps** — Once scale reaches critical mass, we will launch **dedicated standalone applications** (Android, iOS, and progressive web app) exclusively for the Krishi-Sathi service, offering offline-first field data capture, push-notification nudges, and a streamlined farmer-first UX.
+
+- **Regional Hub Network** — Each district will have its own **regional hub** with a local AMD Ryzen AI edge node, enabling in-person **workshops, training sessions, and nationwide seminars** for plant doctors, extension officers, and farmer producer organizations (FPOs). These hubs will serve as the ground-level bridge between satellite intelligence and on-farm action.
+
+- **Dashboard Redesign via Field Surveys** — Before the next major dashboard iteration, we will conduct structured **surveys with plant doctors, farm managers, and extension workers** to understand their real-world workflows, pain points, and data priorities. The dashboard will then be **reorganized and redesigned** based on these insights to deliver a more intuitive, role-specific, and actionable user experience.
+
+---
+
 ## Key Features
 
 | Feature | Description |
