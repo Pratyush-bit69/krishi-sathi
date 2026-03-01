@@ -23,7 +23,7 @@ The platform processes **Sentinel-2 multispectral imagery** through a pipeline o
 
 | Feature | Description |
 |---------|-------------|
-| 🌍 **3D Interactive Globe** | Three.js globe with 7 pilot site markers, satellite orbit trails, connection arcs, starfield, and zone-level agricultural analytics |
+| 🌍 **3D Interactive Globe** | Three.js globe with 6 pilot site markers, satellite orbit trails, connection arcs, starfield, and zone-level agricultural analytics |
 | 🧑‍🌾 **Farmer View** | Simplified dashboard with health score ring, crop advisory, today's actions, and weather |
 | 📊 **Manager View** | Detailed analytics with NDVI/NDWI charts, soil moisture, anomaly detection, yield forecasts, and Leaflet field map |
 | 🧬 **Crop Advisory** | Growth-stage-aware recommendations based on crop phenology models (Wheat, Rice, Sorghum, Cotton) |
@@ -76,17 +76,16 @@ The platform processes **Sentinel-2 multispectral imagery** through a pipeline o
 
 ---
 
-## 🗺️ Pilot Sites (7)
+## 🗺️ Pilot Sites (6)
 
 | # | Site | State | Agro-Zone | Crops |
 |---|------|-------|-----------|-------|
-| 1 | AIT Bengaluru | Karnataka | Southern Plateau | Rice, Sorghum |
-| 2 | ICRISAT Hyderabad | Telangana | Semi-Arid Deccan | Sorghum, Cotton |
-| 3 | Ludhiana | Punjab | Indo-Gangetic Plains | Wheat, Rice |
-| 4 | Nashik | Maharashtra | Western Plateau | Cotton, Sorghum |
-| 5 | TNAU Coimbatore | Tamil Nadu | Western Ghats Foothills | Rice, Cotton |
-| 6 | Bhopal | Madhya Pradesh | Central Highlands | Wheat, Sorghum |
-| 7 | Varanasi | Uttar Pradesh | Indo-Gangetic Plains | Rice, Wheat |
+| 1 | ICRISAT Hyderabad | Telangana | Semi-Arid Deccan | Sorghum, Cotton |
+| 2 | Ludhiana | Punjab | Indo-Gangetic Plains | Wheat, Rice |
+| 3 | Nashik | Maharashtra | Western Plateau | Cotton, Sorghum |
+| 4 | TNAU Coimbatore | Tamil Nadu | Western Ghats Foothills | Rice, Cotton |
+| 5 | Bhopal | Madhya Pradesh | Central Highlands | Wheat, Sorghum |
+| 6 | Varanasi | Uttar Pradesh | Indo-Gangetic Plains | Rice, Wheat |
 
 ---
 
