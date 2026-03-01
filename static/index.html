@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Krishi-Sathi — AI Precision Agriculture</title>
+    <meta name="description"
+        content="AI-first precision agriculture SaaS — satellite to field nudges for smallholder farmers.">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+
+    <!-- Three.js for 3D Globe -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <!-- GSAP for premium animations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+
+    <!-- Google Fonts: Lora (headings) + Space Grotesk (body) + JetBrains Mono (data) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- ===== SATELLITE CURSOR (custom SVG rendered in JS) ===== -->
+    <div id="satelliteCursor" class="satellite-cursor"></div>
+
+    <!-- ===== PARTICLE FIELD BACKGROUND ===== -->
+    <canvas id="particleBg" class="particle-bg"></canvas>
+
+    <!-- ===== HERO SECTION WITH 3D GLOBE ===== -->
+    <section class="hero-section" id="heroSection">
+        <div class="hero-content">
+            <div class="hero-text">
+                <div class="hero-badge">
+                    <span class="badge-pulse"></span>
+                    <span>AI-Powered Satellite Intelligence</span>
+                </div>
+                <h1 class="hero-title">
+                    <span class="title-line">Krishi</span>
+                    <span class="title-line accent">Sathi</span>
+                </h1>
+                <p class="hero-subtitle">Precision Agriculture &mdash; From Satellite Orbit to Farmer's Field</p>
+                <p class="hero-desc">
+                    Harnessing Sentinel-2 imagery, AI-driven analytics on AMD Ryzen&trade; AI NPU,
+                    and multilingual nudge delivery to protect 38M+ smallholder farmers across India.
+                </p>
+                <div class="hero-actions">
+                    <button class="btn-hero-primary" onclick="enterDashboard()">
+                        <span class="btn-icon">🛰️</span>
+                        Enter Mission Control
+                    </button>
+                    <button class="btn-hero-secondary" onclick="scrollToGlobe()">
+                        <span class="btn-icon">🌍</span>
+                        Explore Globe
+                    </button>
+                </div>
+                <div class="hero-stats">
+                    <div class="hero-stat">
+                        <span class="stat-value" data-count="7">0</span>
+                        <span class="stat-label">Pilot Sites</span>
+                    </div>
+                    <div class="hero-stat">
+                        <span class="stat-value" data-count="13">0</span>
+                        <span class="stat-label">Target States</span>
+                    </div>
+                    <div class="hero-stat">
+                        <span class="stat-value" data-count="38">0</span>
+                        <span class="stat-label">Million Farmers</span>
+                    </div>
+                    <div class="hero-stat">
+                        <span class="stat-value" data-count="10">0</span>
+                        <span class="stat-label">m Resolution</span>
+                    </div>
+                    <div class="hero-stat">
+                        <span class="stat-value" data-count="96">0</span>
+                        <span class="stat-label">% Model Acc.</span>
+                    </div>
+                </div>
+            </div>
+            <div class="hero-globe-wrap" id="heroGlobeWrap">
+                <canvas id="globeCanvas"></canvas>
+                <div class="globe-tooltip" id="globeTooltip"></div>
+                <!-- Orbit rings (CSS animated) -->
+                <div class="orbit-ring orbit-ring-1"></div>
+                <div class="orbit-ring orbit-ring-2"></div>
+                <div class="orbit-ring orbit-ring-3"></div>
+                <!-- Legend -->
+                <div class="globe-legend">
+                    <div class="legend-item"><span class="legend-dot" style="background:#22c55e"></span> Bengaluru</div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#06b6d4"></span> Hyderabad</div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span> Ludhiana</div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#a855f7"></span> Nashik</div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#ec4899"></span> Coimbatore</div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#f97316"></span> Bhopal</div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#14b8a6"></span> Varanasi</div>
+                </div>
+            </div>
+        </div>
+        <div class="hero-scroll-hint" onclick="enterDashboard()">
+            <span>Scroll to Dashboard</span>
+            <div class="scroll-arrow"></div>
+        </div>
+    </section>
+
+    <!-- ===== DASHBOARD ===== -->
+    <div class="dashboard-wrap" id="dashboardWrap">
+
+        <!-- ===== HEADER ===== -->
+        <header class="app-header" id="appHeader">
+            <div class="header-brand">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="18" cy="18" r="16" stroke="url(#kg1)" stroke-width="2" />
+                        <path d="M18 6 C14 14, 10 18, 18 30 C26 18, 22 14, 18 6Z" fill="url(#kg1)" opacity="0.7" />
+                        <path d="M10 16 Q14 12 18 18 Q22 12 26 16" stroke="url(#kg2)" stroke-width="1.5" fill="none" />
+                        <circle cx="18" cy="20" r="3" fill="url(#kg2)" />
+                        <defs>
+                            <linearGradient id="kg1" x1="0" y1="0" x2="36" y2="36">
+                                <stop stop-color="#22c55e" />
+                                <stop offset="1" stop-color="#06b6d4" />
+                            </linearGradient>
+                            <linearGradient id="kg2" x1="36" y1="0" x2="0" y2="36">
+                                <stop stop-color="#f59e0b" />
+                                <stop offset="1" stop-color="#22c55e" />
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="header-title">Krishi-Sathi</h1>
+                    <p class="header-subtitle">Mission Control &mdash; Satellite to Field</p>
+                </div>
+            </div>
+            <div class="header-controls">
+                <div class="site-selector-wrap">
+                    <label for="siteSelector">PILOT SITE</label>
+                    <select id="siteSelector" class="site-select" onchange="switchSite(this.value)">
+                        <option value="bengaluru">🌿 AIT Bengaluru (12.96°N, 77.50°E)</option>
+                        <option value="icrisat">🌾 ICRISAT Hyderabad (17.32°N, 78.21°E)</option>
+                        <option value="ludhiana">🌾 Ludhiana Punjab (30.90°N, 75.86°E)</option>
+                        <option value="nashik">🍇 Nashik Maharashtra (20.00°N, 73.79°E)</option>
+                        <option value="coimbatore">🌱 TNAU Coimbatore (11.02°N, 76.96°E)</option>
+                        <option value="bhopal">🌿 Bhopal MP (23.26°N, 77.41°E)</option>
+                        <option value="varanasi">🌾 Varanasi UP (25.32°N, 82.97°E)</option>
+                    </select>
+                </div>
+                <!-- View Toggle -->
+                <div class="view-toggle" id="viewToggle">
+                    <button class="view-btn active" data-view="farmer" onclick="switchView('farmer')">
+                        🧑‍🌾 Farmer
+                    </button>
+                    <button class="view-btn" data-view="manager" onclick="switchView('manager')">
+                        📊 Manager
+                    </button>
+                </div>
+                <div class="header-badge">
+                    <span class="badge-dot"></span>
+                    <span id="headerStatus">Initializing…</span>
+                </div>
+                <button class="btn-back-globe" onclick="showHero()" title="Back to Globe">🌍</button>
+            </div>
+        </header>
+
+        <!-- ===== MAIN LAYOUT ===== -->
+        <main class="app-main">
+
+            <!-- ─── TOP: Site Summary Bar ─── -->
+            <section class="summary-bar" id="summaryBar">
+                <div class="summary-card" data-anim="1">
+                    <div class="summary-icon-wrap"><div class="summary-icon">🌾</div></div>
+                    <div class="summary-content">
+                        <span class="summary-value" id="sumFields">—</span>
+                        <span class="summary-label">Fields</span>
+                    </div>
+                    <div class="summary-glow"></div>
+                </div>
+                <div class="summary-card" data-anim="2">
+                    <div class="summary-icon-wrap"><div class="summary-icon">📐</div></div>
+                    <div class="summary-content">
+                        <span class="summary-value" id="sumArea">—</span>
+                        <span class="summary-label">Hectares</span>
+                    </div>
+                    <div class="summary-glow"></div>
+                </div>
+                <div class="summary-card" data-anim="3">
+                    <div class="summary-icon-wrap"><div class="summary-icon">🌿</div></div>
+                    <div class="summary-content">
+                        <span class="summary-value" id="sumNDVI">—</span>
+                        <span class="summary-label">Avg NDVI</span>
+                    </div>
+                    <div class="summary-glow"></div>
+                </div>
+                <div class="summary-card" data-anim="4">
+                    <div class="summary-icon-wrap"><div class="summary-icon">💧</div></div>
+                    <div class="summary-content">
+                        <span class="summary-value" id="sumSMC">—</span>
+                        <span class="summary-label">Soil Moisture</span>
+                    </div>
+                    <div class="summary-glow"></div>
+                </div>
+                <div class="summary-card" data-anim="5">
+                    <div class="summary-icon-wrap"><div class="summary-icon">⚠️</div></div>
+                    <div class="summary-content">
+                        <span class="summary-value" id="sumAnomalies">—</span>
+                        <span class="summary-label">Anomalies</span>
+                    </div>
+                    <div class="summary-glow"></div>
+                </div>
+                <div class="summary-card" data-anim="6">
+                    <div class="summary-icon-wrap"><div class="summary-icon">🖥️</div></div>
+                    <div class="summary-content">
+                        <span class="summary-value" id="sumHardware">—</span>
+                        <span class="summary-label">Edge Hub</span>
+                    </div>
+                    <div class="summary-glow"></div>
+                </div>
+            </section>
+
+            <!-- ═══ FARMER VIEW (Simple) ═══ -->
+            <div class="farmer-view" id="farmerView">
+                <div class="farmer-grid">
+                    <!-- Farm Health Overview -->
+                    <div class="farmer-card health-card glass-card">
+                        <div class="farmer-card-header">
+                            <span class="farmer-card-icon">🌱</span>
+                            <h2>Your Farm Health</h2>
+                        </div>
+                        <div class="health-score-wrap" id="farmHealthWrap">
+                            <div class="health-ring" id="healthRing">
+                                <svg viewBox="0 0 120 120">
+                                    <circle cx="60" cy="60" r="52" stroke="rgba(148,163,184,0.1)" stroke-width="10" fill="none"/>
+                                    <circle id="healthArc" cx="60" cy="60" r="52" stroke="#22c55e" stroke-width="10" fill="none" stroke-linecap="round" stroke-dasharray="327" stroke-dashoffset="327" transform="rotate(-90 60 60)" style="transition: stroke-dashoffset 1.5s ease, stroke 0.5s"/>
+                                </svg>
+                                <div class="health-score-text">
+                                    <span class="health-score-num" id="healthScore">—</span>
+                                    <span class="health-score-label">Health Score</span>
+                                </div>
+                            </div>
+                            <p class="health-summary" id="healthSummary">Loading your farm data…</p>
+                        </div>
+                        <!-- Crop Advisory (fills the empty space) -->
+                        <div class="crop-advisory-inline" id="cropAdvisoryInline">
+                            <div class="advisory-divider"></div>
+                            <div class="advisory-header">
+                                <span class="advisory-icon">🧬</span>
+                                <h3>Crop Advisory</h3>
+                            </div>
+                            <div class="advisory-content" id="advisoryContent">
+                                <div class="loading-placeholder">Loading advisory…</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Today's Actions -->
+                    <div class="farmer-card actions-card glass-card">
+                        <div class="farmer-card-header">
+                            <span class="farmer-card-icon">📋</span>
+                            <h2>Today's Actions</h2>
+                        </div>
+                        <div class="farmer-actions" id="farmerActions">
+                            <div class="loading-placeholder">Loading actions…</div>
+                        </div>
+                    </div>
+
+                    <!-- AI Model Accuracy -->
+                    <div class="farmer-card model-card glass-card">
+                        <div class="farmer-card-header">
+                            <span class="farmer-card-icon">🤖</span>
+                            <h2>AI Model Performance</h2>
+                        </div>
+                        <div class="model-accuracy-wrap" id="modelAccuracyWrap">
+                            <div class="loading-placeholder">Loading model info…</div>
+                        </div>
+                    </div>
+
+                    <!-- Field Status -->
+                    <div class="farmer-card fields-overview-card glass-card">
+                        <div class="farmer-card-header">
+                            <span class="farmer-card-icon">🌾</span>
+                            <h2>Your Fields</h2>
+                        </div>
+                        <div class="farmer-fields" id="farmerFields">
+                            <div class="loading-placeholder">Loading fields…</div>
+                        </div>
+                    </div>
+
+                    <!-- Weather Quick -->
+                    <div class="farmer-card weather-card glass-card" style="grid-column: 1 / -1;">
+                        <div class="farmer-card-header">
+                            <span class="farmer-card-icon">🌤️</span>
+                            <h2>Weather This Week</h2>
+                        </div>
+                        <div class="farmer-weather" id="farmerWeather">
+                            <div class="loading-placeholder">Loading weather…</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══ MANAGER VIEW (Detailed) — hidden by default ═══ -->
+            <div class="manager-view" id="managerView" style="display:none">
+
+            <!-- ─── CONTENT: 2-column layout ─── -->
+            <div class="content-grid">
+
+                <!-- LEFT COLUMN -->
+                <div class="left-col">
+
+                    <!-- Map -->
+                    <div class="card glass-card map-card">
+                        <div class="card-header">
+                            <h2>Field Map</h2>
+                            <span class="hint" id="siteNameHint">Loading…</span>
+                        </div>
+                        <div id="map"></div>
+                    </div>
+
+                    <!-- Fields Table -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <h2>Monitored Fields</h2>
+                            <span class="hint" id="fieldCount">—</span>
+                        </div>
+                        <div class="card-body scroll-x" id="fieldsTable">
+                            <div class="loading-placeholder">Loading fields…</div>
+                        </div>
+                    </div>
+
+                    <!-- Nudges / Actions -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <h2>Active Nudges</h2>
+                            <button class="btn-sm btn-glow" onclick="loadNudges()">Refresh</button>
+                        </div>
+                        <div class="card-body" id="nudgesPanel">
+                            <div class="loading-placeholder">Generate nudges to see actions…</div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- RIGHT COLUMN -->
+                <div class="right-col">
+
+                    <!-- Tab Navigation -->
+                    <div class="tab-bar">
+                        <button class="tab active" data-tab="ndvi" onclick="switchTab('ndvi')">🌿 NDVI/NDWI</button>
+                        <button class="tab" data-tab="moisture" onclick="switchTab('moisture')">💧 Soil Moisture</button>
+                        <button class="tab" data-tab="anomalies" onclick="switchTab('anomalies')">🐛 Anomalies</button>
+                        <button class="tab" data-tab="yield" onclick="switchTab('yield')">📊 Yield</button>
+                        <button class="tab" data-tab="weather" onclick="switchTab('weather')">🌤️ Weather</button>
+                        <button class="tab" data-tab="satellite" onclick="switchTab('satellite')">🛰️ Satellite</button>
+                    </div>
+
+                    <!-- NDVI/NDWI Tab -->
+                    <div class="tab-panel active" id="panel-ndvi">
+                        <div class="card glass-card">
+                            <div class="card-header">
+                                <h2>NDVI Time Series</h2>
+                                <select id="ndviFieldSelect" class="field-select" onchange="loadFieldIndices(this.value)">
+                                    <option value="">Select a field…</option>
+                                </select>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="ndviChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="card glass-card">
+                            <div class="card-header">
+                                <h2>NDWI Time Series</h2>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="ndwiChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="card glass-card" id="indicesSummaryCard" hidden>
+                            <div class="card-header">
+                                <h2>Index Summary</h2>
+                            </div>
+                            <div class="card-body" id="indicesSummary"></div>
+                        </div>
+                    </div>
+
+                    <!-- Soil Moisture Tab -->
+                    <div class="tab-panel" id="panel-moisture">
+                        <div class="card glass-card">
+                            <div class="card-header">
+                                <h2>Soil Moisture — All Fields</h2>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="smcChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="card glass-card">
+                            <div class="card-header">
+                                <h2>SMC Details</h2>
+                            </div>
+                            <div class="card-body" id="smcDetails">
+                                <div class="loading-placeholder">Loading soil moisture data…</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Anomalies Tab -->
+                    <div class="tab-panel" id="panel-anomalies">
+                        <div class="card glass-card">
+                            <div class="card-header">
+                                <h2>Pest & Disease Anomalies</h2>
+                            </div>
+                            <div class="card-body" id="anomaliesPanel">
+                                <div class="loading-placeholder">Analyzing spectral anomalies…</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Yield Tab -->
+                    <div class="tab-panel" id="panel-yield">
+                        <div class="card glass-card">
+                            <div class="card-header">
+                                <h2>Yield Forecasts</h2>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="yieldChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="card glass-card">
+                            <div class="card-header">
+                                <h2>Yield Details & Risk</h2>
+                            </div>
+                            <div class="card-body" id="yieldDetails">
+                                <div class="loading-placeholder">Generating yield forecasts…</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Weather Tab -->
+                    <div class="tab-panel" id="panel-weather">
+                        <div class="card glass-card">
+                            <div class="card-header">
+                                <h2>Weather (Open-Meteo)</h2>
+                                <button class="btn-sm btn-glow" onclick="loadWeather(true)">Refresh</button>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="weatherChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="card glass-card">
+                            <div class="card-header">
+                                <h2>ET₀ & Rainfall</h2>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="rainChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Satellite Search Tab -->
+                    <div class="tab-panel" id="panel-satellite">
+                        <div class="card glass-card">
+                            <div class="card-header">
+                                <h2>Sentinel Data Search</h2>
+                                <span class="hint">Live STAC API — Copernicus Data Space</span>
+                            </div>
+                            <div class="card-body">
+                                <form id="searchForm" class="sat-search-form">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="satDate">Center Date</label>
+                                            <input type="date" id="satDate" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="satDays">± Days</label>
+                                            <input type="number" id="satDays" value="15" min="1" max="90">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="satCloud">Max Cloud %</label>
+                                            <input type="number" id="satCloud" value="30" min="0" max="100">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="chkS2" checked> Sentinel-2 MSI
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="chkS1" checked> Sentinel-1 SAR
+                                        </label>
+                                        <button type="submit" class="btn-search btn-glow">Search Imagery</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        <!-- Copernicus Login -->
+                        <div class="card glass-card" id="loginCard">
+                            <div class="card-header">
+                                <h2>Copernicus Login</h2>
+                                <span class="hint">Required for data downloads</span>
+                            </div>
+                            <div class="card-body" id="loginForm">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="cdseUser">Email</label>
+                                        <input type="email" id="cdseUser" placeholder="your@email.com">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="cdsePass">Password</label>
+                                        <input type="password" id="cdsePass" placeholder="Password">
+                                    </div>
+                                </div>
+                                <button type="button" id="loginBtn" class="btn-login btn-glow" onclick="doLogin()">Sign In</button>
+                                <div class="login-hint">
+                                    Free account &rarr; <a href="https://dataspace.copernicus.eu" target="_blank">dataspace.copernicus.eu</a>
+                                </div>
+                                <div class="login-error" id="loginError" hidden></div>
+                            </div>
+                            <div class="login-success" id="loginSuccess" hidden>
+                                <span>✅ Logged in — downloads enabled</span>
+                                <button type="button" class="btn-logout" onclick="doLogout()">Logout</button>
+                            </div>
+                        </div>
+
+                        <!-- Satellite Results -->
+                        <div class="card glass-card" id="satResultsCard" hidden>
+                            <div class="card-header">
+                                <h2>Search Results</h2>
+                                <span class="hint" id="satResultCount">—</span>
+                            </div>
+                            <div class="card-body results-grid" id="satResults"></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            </div><!-- end .manager-view -->
+
+            <!-- ─── BOTTOM: Site Info Bar ─── -->
+            <section class="info-bar">
+                <div class="info-item">
+                    <strong>Demo Window:</strong>
+                    <span id="infoDemoWindow">—</span>
+                </div>
+                <div class="info-item">
+                    <strong>Agro-Zone:</strong>
+                    <span id="infoAgroZone">—</span>
+                </div>
+                <div class="info-item">
+                    <strong>Soil Probes:</strong>
+                    <span id="infoProbes">—</span>
+                </div>
+                <div class="info-item">
+                    <strong>Edge Hub:</strong>
+                    <span id="infoHub">—</span>
+                </div>
+                <div class="info-item">
+                    <strong>Model Target:</strong>
+                    <span>ONNX → AMD Ryzen AI NPU (XDNA™)</span>
+                </div>
+            </section>
+
+        </main>
+
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
