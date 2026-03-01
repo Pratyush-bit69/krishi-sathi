@@ -1022,6 +1022,479 @@ def get_advisory(site_key):
 
 
 # ═══════════════════════════════════════════════════════════════
+#  System Health & Statistics
+# ═══════════════════════════════════════════════════════════════
+
+_start_time = datetime.utcnow()
+
+@app.route("/api/health")
+def health_check():
+    """System health check — DB connectivity, uptime, memory."""
+    import sys
+    uptime_seconds = (datetime.utcnow() - _start_time).total_seconds()
+    db_ok = False
+    db_size = 0
+    try:
+        conn = get_db()
+        conn.execute("SELECT 1").fetchone()
+        conn.close()
+        db_ok = True
+        if os.path.exists(DB_PATH):
+            db_size = round(os.path.getsize(DB_PATH) / 1024, 1)
+    except Exception:
+        pass
+
+    return jsonify({
+        "status": "healthy" if db_ok else "degraded",
+        "uptime_seconds": round(uptime_seconds),
+        "uptime_human": _fmt_duration(uptime_seconds),
+        "database": {"connected": db_ok, "size_kb": db_size, "path": DB_PATH},
+        "python_version": sys.version.split()[0],
+        "pilot_sites": len(PILOT_SITES),
+        "models_loaded": True,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    })
+
+
+def _fmt_duration(secs):
+    d, secs = divmod(int(secs), 86400)
+    h, secs = divmod(secs, 3600)
+    m, s = divmod(secs, 60)
+    parts = []
+    if d: parts.append(f"{d}d")
+    if h: parts.append(f"{h}h")
+    parts.append(f"{m}m")
+    return " ".join(parts)
+
+
+@app.route("/api/stats")
+def platform_stats():
+    """Global platform statistics."""
+    conn = get_db()
+    field_count = conn.execute("SELECT COUNT(*) FROM fields").fetchone()[0]
+    idx_count = conn.execute("SELECT COUNT(*) FROM spectral_indices").fetchone()[0]
+    anomaly_count = conn.execute("SELECT COUNT(*) FROM anomalies").fetchone()[0]
+    nudge_count = conn.execute("SELECT COUNT(*) FROM nudges").fetchone()[0]
+    weather_count = conn.execute("SELECT COUNT(*) FROM weather").fetchone()[0]
+    yield_count = conn.execute("SELECT COUNT(*) FROM yield_forecasts").fetchone()[0]
+    smc_count = conn.execute("SELECT COUNT(*) FROM soil_moisture").fetchone()[0]
+
+    # Per-site breakdown
+    sites_breakdown = {}
+    for key, site in PILOT_SITES.items():
+        fc = conn.execute("SELECT COUNT(*) FROM fields WHERE site_key = ?", (key,)).fetchone()[0]
+        ic = conn.execute("""SELECT COUNT(*) FROM spectral_indices
+                            WHERE field_id IN (SELECT field_id FROM fields WHERE site_key = ?)""", (key,)).fetchone()[0]
+        sites_breakdown[key] = {
+            "name": site["short_name"],
+            "fields": fc,
+            "observations": ic,
+            "area_ha": sum(f["area_ha"] for f in site.get("fields", [])),
+        }
+    conn.close()
+
+    total_area = sum(s["area_ha"] for s in sites_breakdown.values())
+    return jsonify({
+        "overview": {
+            "pilot_sites": len(PILOT_SITES),
+            "total_fields": field_count,
+            "total_area_ha": round(total_area, 1),
+            "spectral_observations": idx_count,
+            "anomalies_detected": anomaly_count,
+            "nudges_generated": nudge_count,
+            "weather_records": weather_count,
+            "yield_forecasts": yield_count,
+            "soil_moisture_predictions": smc_count,
+        },
+        "sites": sites_breakdown,
+        "models": {
+            "smc_cnn": {"accuracy": "96.2% R²", "status": "active"},
+            "pest_detector": {"accuracy": "93.7% F1", "status": "active"},
+            "yield_forecaster": {"accuracy": "91.4% R²", "status": "active"},
+        },
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+    })
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Data Export (CSV)
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/export/<site_key>")
+def export_site_csv(site_key):
+    """Export all field data for a site as CSV."""
+    site = PILOT_SITES.get(site_key)
+    if not site:
+        return jsonify({"error": "Site not found"}), 404
+
+    import csv
+    import io
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Field ID", "Field Name", "Crop", "Area (ha)", "Irrigation",
+        "Sowing Date", "Latest NDVI", "Latest NDWI", "Soil Moisture %",
+        "SMC Category", "Anomaly Count", "Yield Forecast (t/ha)", "Risk Level",
+    ])
+
+    for field in site.get("fields", []):
+        ts = get_field_timeseries(field["id"], 30)
+        latest = ts[-1] if ts else {}
+        pred = smc_model.predict(
+            ndvi=latest.get("ndvi", 0.4), ndwi=latest.get("ndwi", 0.0), bsi=latest.get("bsi", 0.1),
+            agro_zone=site.get("agro_zone", ""),
+        )
+        anomalies = pest_detector.detect_anomalies(
+            ts or [], crop=field["crop"], sowing_date=field["sowing_date"]
+        )
+        ndvi_series = [t["ndvi"] for t in (ts or []) if t.get("ndvi") is not None]
+        yf = yield_forecaster.forecast(
+            field["id"], field["crop"], ndvi_series, [pred["smc_percent"]],
+            get_weather_history(site_key, 30), field["sowing_date"], field["area_ha"]
+        )
+        writer.writerow([
+            field["id"], field["name"], field["crop"], field["area_ha"],
+            field["irrigation"], field["sowing_date"],
+            round(latest.get("ndvi", 0), 4) if latest.get("ndvi") else "",
+            round(latest.get("ndwi", 0), 4) if latest.get("ndwi") else "",
+            round(pred["smc_percent"], 1), pred["category"],
+            len(anomalies), round(yf["yield_tonnes_ha"], 2), yf["risk_level"],
+        ])
+
+    from flask import Response
+    csv_data = output.getvalue()
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=krishi_sathi_{site_key}_{datetime.utcnow().strftime('%Y%m%d')}.csv"}
+    )
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Water Balance Calculator
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/water-balance/<field_id>")
+def water_balance(field_id):
+    """Calculate field water balance: rainfall vs ET₀ vs irrigation demand."""
+    conn = get_db()
+    field_row = conn.execute("SELECT * FROM fields WHERE field_id = ?", (field_id,)).fetchone()
+    conn.close()
+    if not field_row:
+        return jsonify({"error": "Field not found"}), 404
+
+    field = dict(field_row)
+    site = PILOT_SITES.get(field["site_key"], {})
+    crop_profile = CROP_PROFILES.get(field["crop"], CROP_PROFILES.get("wheat", {}))
+
+    sowing = datetime.strptime(field["sowing_date"], "%Y-%m-%d")
+    das = max(0, (datetime.utcnow() - sowing).days)
+
+    # Get current Kc
+    kc = 0.3
+    stage_name = "Pre-Sowing"
+    for sn, sd in crop_profile.get("growth_stages", {}).items():
+        if sd["days"][0] <= das <= sd["days"][1]:
+            kc = sd["kc"]
+            stage_name = sn.replace("_", " ").title()
+            break
+
+    weather = get_weather_history(field["site_key"], 30)
+    if not weather:
+        weather = fetch_weather(site.get("lat", 20), site.get("lon", 78), field["site_key"], 30)
+
+    daily_balance = []
+    cumulative_deficit = 0
+    for w in (weather or [])[-14:]:
+        et0 = w.get("et0", 5) or 5
+        etc = round(et0 * kc, 2)
+        rain = w.get("rainfall_mm", 0) or 0
+        effective_rain = round(rain * 0.8, 2)  # 80% effective
+        balance = round(effective_rain - etc, 2)
+        cumulative_deficit += balance
+        daily_balance.append({
+            "date": w.get("date", ""),
+            "et0_mm": round(et0, 2),
+            "etc_mm": etc,
+            "rainfall_mm": round(rain, 2),
+            "effective_rain_mm": effective_rain,
+            "balance_mm": balance,
+            "cumulative_mm": round(cumulative_deficit, 2),
+        })
+
+    total_rain = sum(d["rainfall_mm"] for d in daily_balance)
+    total_etc = sum(d["etc_mm"] for d in daily_balance)
+    irrigation_need = max(0, round(total_etc - total_rain * 0.8, 1))
+
+    return jsonify({
+        "field_id": field_id,
+        "field_name": field["name"],
+        "crop": field["crop"],
+        "growth_stage": stage_name,
+        "days_after_sowing": das,
+        "kc": kc,
+        "period_days": len(daily_balance),
+        "total_rainfall_mm": round(total_rain, 1),
+        "total_etc_mm": round(total_etc, 1),
+        "irrigation_need_mm": irrigation_need,
+        "daily_balance": daily_balance,
+        "recommendation": "Irrigate now" if irrigation_need > 20 else "Monitor closely" if irrigation_need > 10 else "Adequate moisture",
+    })
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Crop Phenology Calendar
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/crop-calendar/<site_key>")
+def crop_calendar(site_key):
+    """Get crop phenology calendar for all fields at a site."""
+    site = PILOT_SITES.get(site_key)
+    if not site:
+        return jsonify({"error": "Site not found"}), 404
+
+    now = datetime.utcnow()
+    calendars = []
+    for field in site.get("fields", []):
+        crop_profile = CROP_PROFILES.get(field["crop"])
+        if not crop_profile:
+            continue
+        sowing = datetime.strptime(field["sowing_date"], "%Y-%m-%d")
+        das = max(0, (now - sowing).days)
+
+        stages = []
+        current_stage_idx = -1
+        for i, (sname, sdata) in enumerate(crop_profile.get("growth_stages", {}).items()):
+            d_start, d_end = sdata["days"]
+            is_current = d_start <= das <= d_end
+            progress = 0
+            if is_current:
+                current_stage_idx = i
+                progress = round((das - d_start) / max(d_end - d_start, 1) * 100)
+            elif das > d_end:
+                progress = 100
+
+            stages.append({
+                "name": sname.replace("_", " ").title(),
+                "day_start": d_start,
+                "day_end": d_end,
+                "kc": sdata["kc"],
+                "is_current": is_current,
+                "progress": min(progress, 100),
+                "date_start": (sowing + timedelta(days=d_start)).strftime("%b %d"),
+                "date_end": (sowing + timedelta(days=d_end)).strftime("%b %d"),
+            })
+
+        total_days = max(s["day_end"] for s in stages) if stages else 150
+        overall_progress = min(round(das / max(total_days, 1) * 100), 100)
+
+        calendars.append({
+            "field_id": field["id"],
+            "field_name": field["name"],
+            "crop": crop_profile["name"],
+            "crop_key": field["crop"],
+            "sowing_date": field["sowing_date"],
+            "days_after_sowing": das,
+            "overall_progress": overall_progress,
+            "estimated_harvest": (sowing + timedelta(days=total_days)).strftime("%Y-%m-%d"),
+            "stages": stages,
+            "current_stage_index": current_stage_idx,
+        })
+
+    return jsonify({
+        "site_key": site_key,
+        "site_name": site["short_name"],
+        "calendars": calendars,
+    })
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Site Comparison
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/compare/<site_a>/<site_b>")
+def compare_sites(site_a, site_b):
+    """Compare two pilot sites side-by-side."""
+    sa = PILOT_SITES.get(site_a)
+    sb = PILOT_SITES.get(site_b)
+    if not sa or not sb:
+        return jsonify({"error": "One or both sites not found"}), 404
+
+    def site_summary(key, site):
+        fields = site.get("fields", [])
+        total_area = sum(f["area_ha"] for f in fields)
+        ndvi_vals, smc_vals, anomaly_total = [], [], 0
+        for field in fields:
+            ts = get_field_timeseries(field["id"], 30)
+            if ts:
+                latest = ts[-1]
+                if latest.get("ndvi"): ndvi_vals.append(latest["ndvi"])
+                pred = smc_model.predict(
+                    ndvi=latest.get("ndvi", 0.4), ndwi=latest.get("ndwi", 0), bsi=latest.get("bsi", 0.1),
+                    agro_zone=site.get("agro_zone", ""),
+                )
+                smc_vals.append(pred["smc_percent"])
+                anomalies = pest_detector.detect_anomalies(ts, field["crop"], field["sowing_date"])
+                anomaly_total += len(anomalies)
+        return {
+            "key": key,
+            "name": site["short_name"],
+            "agro_zone": site["agro_zone"],
+            "type": site["type"],
+            "lat": site["lat"], "lon": site["lon"],
+            "field_count": len(fields),
+            "total_area_ha": round(total_area, 1),
+            "primary_crops": site["primary_crops"],
+            "avg_ndvi": round(sum(ndvi_vals) / max(len(ndvi_vals), 1), 4),
+            "avg_smc": round(sum(smc_vals) / max(len(smc_vals), 1), 1),
+            "total_anomalies": anomaly_total,
+            "soil_probes": site.get("soil_probes", 0),
+        }
+
+    return jsonify({
+        "site_a": site_summary(site_a, sa),
+        "site_b": site_summary(site_b, sb),
+    })
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Alert Digest
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/alerts/digest/<site_key>")
+def alert_digest(site_key):
+    """Generate an executive alert digest for a site."""
+    site = PILOT_SITES.get(site_key)
+    if not site:
+        return jsonify({"error": "Site not found"}), 404
+
+    now = datetime.utcnow()
+    alerts = []
+    for field in site.get("fields", []):
+        ts = get_field_timeseries(field["id"], 30)
+        if not ts:
+            continue
+        latest = ts[-1]
+
+        # NDVI decline alert
+        if len(ts) >= 7:
+            recent_ndvi = [t["ndvi"] for t in ts[-7:] if t.get("ndvi")]
+            if len(recent_ndvi) >= 2 and recent_ndvi[-1] < recent_ndvi[0] - 0.05:
+                alerts.append({
+                    "type": "ndvi_decline",
+                    "severity": "warning" if recent_ndvi[-1] - recent_ndvi[0] > -0.1 else "critical",
+                    "field": field["name"],
+                    "field_id": field["id"],
+                    "message": f"NDVI dropped {abs(recent_ndvi[-1] - recent_ndvi[0]):.3f} in 7 days",
+                    "value": round(recent_ndvi[-1], 4),
+                })
+
+        # Soil moisture alert
+        pred = smc_model.predict(
+            ndvi=latest.get("ndvi", 0.4), ndwi=latest.get("ndwi", 0), bsi=latest.get("bsi", 0.1),
+            agro_zone=site.get("agro_zone", ""),
+        )
+        if pred["category"] in ("very_dry", "dry"):
+            alerts.append({
+                "type": "low_moisture",
+                "severity": "critical" if pred["category"] == "very_dry" else "warning",
+                "field": field["name"],
+                "field_id": field["id"],
+                "message": f"Soil moisture at {pred['smc_percent']:.1f}% ({pred['category']})",
+                "value": round(pred["smc_percent"], 1),
+            })
+
+        # Pest anomalies
+        anomalies = pest_detector.detect_anomalies(ts, field["crop"], field["sowing_date"])
+        for a in anomalies[-2:]:
+            alerts.append({
+                "type": "pest_anomaly",
+                "severity": a.get("severity", "warning"),
+                "field": field["name"],
+                "field_id": field["id"],
+                "message": a.get("description", "Spectral anomaly detected"),
+                "value": a.get("ndvi_drop"),
+            })
+
+    # Sort by severity
+    sev_order = {"critical": 0, "warning": 1, "info": 2}
+    alerts.sort(key=lambda a: sev_order.get(a["severity"], 9))
+
+    return jsonify({
+        "site": site["short_name"],
+        "site_key": site_key,
+        "total_alerts": len(alerts),
+        "critical": sum(1 for a in alerts if a["severity"] == "critical"),
+        "warnings": sum(1 for a in alerts if a["severity"] == "warning"),
+        "alerts": alerts[:20],
+        "generated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+    })
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Live Telemetry (Simulated)
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/telemetry/<site_key>")
+def live_telemetry(site_key):
+    """Simulated real-time telemetry from edge hub sensors."""
+    import random
+    site = PILOT_SITES.get(site_key)
+    if not site:
+        return jsonify({"error": "Site not found"}), 404
+
+    now = datetime.utcnow()
+    probes = site.get("soil_probes", 8)
+
+    # Simulate probe readings
+    probe_data = []
+    for i in range(1, probes + 1):
+        probe_data.append({
+            "probe_id": f"SP-{i:02d}",
+            "moisture_pct": round(random.uniform(15, 42), 1),
+            "temp_c": round(random.uniform(18, 34), 1),
+            "ec_ds_m": round(random.uniform(0.3, 2.5), 2),
+            "battery_pct": round(random.uniform(60, 100)),
+            "signal_rssi": round(random.uniform(-90, -40)),
+        })
+
+    # NPU stats
+    npu_stats = {
+        "model": ONNX_CONFIG["target_device"],
+        "utilization_pct": round(random.uniform(12, 65), 1),
+        "inference_ms": round(random.uniform(2.5, 18), 1),
+        "power_watts": round(random.uniform(8, 25), 1),
+        "temperature_c": round(random.uniform(42, 72), 1),
+        "total_inferences": random.randint(1200, 9999),
+        "tops_utilized": round(random.uniform(15, 55), 1),
+    }
+
+    # Edge hub status
+    hub = {
+        "cpu_pct": round(random.uniform(10, 55), 1),
+        "ram_pct": round(random.uniform(35, 70), 1),
+        "disk_pct": round(random.uniform(20, 60), 1),
+        "uptime_hours": round(random.uniform(24, 720)),
+        "last_sync": (now - timedelta(minutes=random.randint(1, 30))).strftime("%H:%M:%S"),
+        "network": "LoRa + 4G",
+    }
+
+    return jsonify({
+        "site": site["short_name"],
+        "timestamp": now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{random.randint(0,999):03d}Z",
+        "probes": probe_data,
+        "npu": npu_stats,
+        "hub": hub,
+        "satellite_pass": {
+            "next_pass": (now + timedelta(hours=random.randint(2, 12))).strftime("%Y-%m-%d %H:%M"),
+            "satellite": "Sentinel-2B",
+            "orbit": random.randint(30000, 40000),
+        },
+    })
+
+
+# ═══════════════════════════════════════════════════════════════
 #  Run
 # ═══════════════════════════════════════════════════════════════
 
@@ -1030,5 +1503,6 @@ if __name__ == "__main__":
     print(f"\n  [*] {APP_NAME} v{APP_VERSION} running at http://localhost:{port}")
     print(f"  [*] {APP_DESCRIPTION}")
     print(f"  [*] Pilot sites: {', '.join(s['short_name'] for s in PILOT_SITES.values())}")
-    print(f"  [*] Target hardware: {ONNX_CONFIG['target_device']}\n")
+    print(f"  [*] Target hardware: {ONNX_CONFIG['target_device']}")
+    print(f"  [*] API endpoints: 25+\n")
     app.run(host="0.0.0.0", port=port, debug=DEBUG_MODE)

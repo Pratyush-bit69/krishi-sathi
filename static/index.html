@@ -31,6 +31,26 @@
 
 <body>
 
+    <!-- ===== TOAST NOTIFICATIONS ===== -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- ===== COMMAND PALETTE (Ctrl+K) ===== -->
+    <div class="cmd-palette-overlay" id="cmdPalette" hidden>
+        <div class="cmd-palette">
+            <div class="cmd-header">
+                <span class="cmd-icon">🛰️</span>
+                <input type="text" id="cmdInput" class="cmd-input" placeholder="Search sites, fields, actions…" autocomplete="off">
+                <kbd class="cmd-kbd">ESC</kbd>
+            </div>
+            <div class="cmd-results" id="cmdResults"></div>
+            <div class="cmd-footer">
+                <span><kbd>↑↓</kbd> Navigate</span>
+                <span><kbd>Enter</kbd> Select</span>
+                <span><kbd>Ctrl+K</kbd> Toggle</span>
+            </div>
+        </div>
+    </div>
+
     <!-- ===== SATELLITE CURSOR (custom SVG rendered in JS) ===== -->
     <div id="satelliteCursor" class="satellite-cursor"></div>
 
@@ -165,6 +185,7 @@
                     <span class="badge-dot"></span>
                     <span id="headerStatus">Initializing…</span>
                 </div>
+                <button class="btn-export" onclick="exportCSV()" title="Export CSV">📥 Export</button>
                 <button class="btn-back-globe" onclick="showHero()" title="Back to Globe">🌍</button>
             </div>
         </header>
@@ -292,6 +313,28 @@
                         </div>
                     </div>
 
+                    <!-- Water Balance -->
+                    <div class="farmer-card water-balance-card glass-card">
+                        <div class="farmer-card-header">
+                            <span class="farmer-card-icon">💧</span>
+                            <h2>Water Balance</h2>
+                        </div>
+                        <div class="water-balance-wrap" id="waterBalanceWrap">
+                            <div class="loading-placeholder">Calculating water balance…</div>
+                        </div>
+                    </div>
+
+                    <!-- Crop Phenology Timeline -->
+                    <div class="farmer-card phenology-card glass-card">
+                        <div class="farmer-card-header">
+                            <span class="farmer-card-icon">📅</span>
+                            <h2>Crop Timeline</h2>
+                        </div>
+                        <div class="phenology-wrap" id="phenologyWrap">
+                            <div class="loading-placeholder">Loading crop calendar…</div>
+                        </div>
+                    </div>
+
                     <!-- Weather Quick -->
                     <div class="farmer-card weather-card glass-card" style="grid-column: 1 / -1;">
                         <div class="farmer-card-header">
@@ -300,6 +343,56 @@
                         </div>
                         <div class="farmer-weather" id="farmerWeather">
                             <div class="loading-placeholder">Loading weather…</div>
+                        </div>
+                    </div>
+
+                    <!-- Live Telemetry -->
+                    <div class="farmer-card telemetry-card glass-card" style="grid-column: 1 / -1;">
+                        <div class="farmer-card-header">
+                            <span class="farmer-card-icon">📡</span>
+                            <h2>Live Edge Hub Telemetry</h2>
+                            <span class="live-badge"><span class="live-dot"></span> LIVE</span>
+                        </div>
+                        <div class="telemetry-wrap" id="telemetryWrap">
+                            <div class="loading-placeholder">Connecting to edge hub…</div>
+                        </div>
+                    </div>
+
+                    <!-- Alert Digest -->
+                    <div class="farmer-card alerts-card glass-card" style="grid-column: 1 / -1;">
+                        <div class="farmer-card-header">
+                            <span class="farmer-card-icon">🔔</span>
+                            <h2>Alert Digest</h2>
+                        </div>
+                        <div class="alert-digest-wrap" id="alertDigestWrap">
+                            <div class="loading-placeholder">Scanning for alerts…</div>
+                        </div>
+                    </div>
+
+                    <!-- Site Comparison -->
+                    <div class="farmer-card compare-card glass-card" style="grid-column: 1 / -1;">
+                        <div class="farmer-card-header">
+                            <span class="farmer-card-icon">📊</span>
+                            <h2>Site Comparison</h2>
+                        </div>
+                        <div class="compare-controls">
+                            <select id="compareSelect" class="site-select" style="max-width:220px">
+                            </select>
+                            <button class="btn-sm btn-glow" onclick="loadSiteComparison()">Compare</button>
+                        </div>
+                        <div class="compare-wrap" id="compareWrap">
+                            <div class="empty-state">Select another site to compare.</div>
+                        </div>
+                    </div>
+
+                    <!-- Platform Stats -->
+                    <div class="farmer-card stats-card glass-card" style="grid-column: 1 / -1;">
+                        <div class="farmer-card-header">
+                            <span class="farmer-card-icon">⚙️</span>
+                            <h2>Platform Statistics</h2>
+                        </div>
+                        <div class="platform-stats-wrap" id="platformStatsWrap">
+                            <div class="loading-placeholder">Loading stats…</div>
                         </div>
                     </div>
                 </div>
@@ -569,6 +662,51 @@
         </main>
 
     </div>
+
+    <!-- ===== FOOTER ===== -->
+    <footer class="app-footer" id="appFooter">
+        <div class="footer-grid">
+            <div class="footer-col">
+                <div class="footer-brand">
+                    <span class="footer-logo">🛰️</span>
+                    <span class="footer-name">Krishi-Sathi</span>
+                </div>
+                <p class="footer-desc">AI-first precision agriculture SaaS — satellite to field nudges for India's smallholder farmers.</p>
+            </div>
+            <div class="footer-col">
+                <h4>Tech Stack</h4>
+                <ul class="footer-list">
+                    <li>🐍 Python 3.10+ / Flask</li>
+                    <li>🧠 ONNX Runtime (INT8 PTQ)</li>
+                    <li>⚡ AMD Ryzen AI NPU (XDNA™)</li>
+                    <li>🛰️ Sentinel-2 L2A / Sentinel-1 GRD</li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h4>Frontend</h4>
+                <ul class="footer-list">
+                    <li>🌍 Three.js r128 (3D Globe)</li>
+                    <li>📊 Chart.js 4.4.7</li>
+                    <li>🗺️ Leaflet 1.9.4</li>
+                    <li>✨ GSAP 3.12.5</li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h4>Data Sources</h4>
+                <ul class="footer-list">
+                    <li>🛰️ Copernicus Data Space (STAC)</li>
+                    <li>🌤️ Open-Meteo API</li>
+                    <li>🗄️ SQLite WAL Mode</li>
+                    <li>📲 Multilingual Nudge Engine</li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <span>© 2026 Krishi-Sathi — Built for AMD Pervasive AI Developer Contest</span>
+            <span class="footer-shortcut">Press <kbd>Ctrl+K</kbd> for quick navigation</span>
+            <div class="footer-health" id="footerHealth">● System Online</div>
+        </div>
+    </footer>
 
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

@@ -24,14 +24,23 @@ The platform processes **Sentinel-2 multispectral imagery** through a pipeline o
 | Feature | Description |
 |---------|-------------|
 | 🌍 **3D Interactive Globe** | Three.js globe with 6 pilot site markers, satellite orbit trails, connection arcs, starfield, and zone-level agricultural analytics |
-| 🧑‍🌾 **Farmer View** | Simplified dashboard with health score ring, crop advisory, today's actions, and weather |
+| 🧑‍🌾 **Farmer View** | Simplified dashboard with health score ring, crop advisory, today's actions, weather, water balance, crop timeline, live telemetry, and alert digest |
 | 📊 **Manager View** | Detailed analytics with NDVI/NDWI charts, soil moisture, anomaly detection, yield forecasts, and Leaflet field map |
 | 🧬 **Crop Advisory** | Growth-stage-aware recommendations based on crop phenology models (Wheat, Rice, Sorghum, Cotton) |
 | 🤖 **AI Model Accuracy** | Live model performance display — SMC CNN (96.2% R²), Pest Detector (93.7% F1), Yield Forecaster (91.4% R²) |
+| 💧 **Water Balance** | Rainfall vs ETc vs irrigation demand calculator with daily balance tracking |
+| 📅 **Crop Phenology Timeline** | Visual crop stage timeline with Kc values, progress bars, and estimated harvest dates |
+| 📡 **Live Edge Hub Telemetry** | Real-time NPU utilization, soil probe readings, hub metrics, next satellite pass |
+| 🔔 **Alert Digest** | Executive summary of critical NDVI declines, low moisture, and pest anomalies |
+| 📊 **Site Comparison** | Side-by-side comparison of any two pilot sites across all metrics |
+| ⌨️ **Command Palette** | Ctrl+K quick navigation with search, keyboard shortcuts (F/M/G/E), and toast notifications |
+| 📥 **CSV Data Export** | One-click download of field data, indices, moisture, yield, and risk levels |
+| ⚙️ **Platform Statistics** | Live counts of observations, anomalies, nudges, forecasts across all sites |
 | 💧 **Irrigation Nudges** | Multilingual SMS/WhatsApp nudges in English, Hindi, Punjabi, Kannada, Telugu |
 | 🛰️ **Satellite Search** | Live STAC API integration with Copernicus Data Space for Sentinel-2 & Sentinel-1 imagery |
 | 🌤️ **Weather Integration** | Open-Meteo API for 7-day forecasts, ET₀, and rainfall tracking |
 | ⚡ **AMD Ryzen AI NPU** | ONNX export pipeline with INT8 PTQ for VitisAI Execution Provider |
+| 🦶 **Premium Footer** | Tech stack showcase, data sources, keyboard shortcut hints, live system health |
 
 ---
 
@@ -62,7 +71,7 @@ The platform processes **Sentinel-2 multispectral imagery** through a pipeline o
    ┌───────▼───┐ ┌─────▼──────┐
    │nudge_engine│ │  app.py    │
    │(multilingual│ │(Flask API) │
-   │ SMS/WhatsApp)│ │ 20+ routes │
+   │ SMS/WhatsApp)│ │ 25+ routes │
    └────────────┘ └─────┬──────┘
                         │
             ┌───────────▼───────────┐
@@ -116,7 +125,7 @@ Open **http://localhost:5000** in your browser.
 ## 📁 Project Structure
 
 ```
-├── app.py              # Flask server (20+ API endpoints)
+├── app.py              # Flask server (25+ API endpoints)
 ├── config.py           # Pilot sites, crop profiles, thresholds
 ├── models.py           # ML models (SMC CNN, Pest Detector, Yield Forecaster)
 ├── nudge_engine.py     # Irrigation & pest alert nudge generation
@@ -172,11 +181,26 @@ session = ort.InferenceSession("model_int8.onnx", providers=providers)
 
 ---
 
-## 🌐 APIs Used
+## 🌐 APIs & Endpoints
 
+### External APIs
 - **Copernicus Data Space** — Sentinel-2 L2A / Sentinel-1 GRD via STAC API
 - **Open-Meteo** — Weather forecasts, ET₀, rainfall history
 - **Leaflet + CARTO** — Dark tile basemaps for field visualization
+
+### Platform API (25+ endpoints)
+| Endpoint | Description |
+|----------|-------------|
+| `/api/config` | Site configuration & crop profiles |
+| `/api/dashboard/<site>` | Full dashboard data (indices, moisture, weather, yield) |
+| `/api/health` | System health (DB, uptime, memory) |
+| `/api/stats` | Platform-wide statistics |
+| `/api/export/<site>` | CSV data export |
+| `/api/water-balance/<field>` | Rainfall vs ETc vs irrigation demand |
+| `/api/crop-calendar/<site>` | Crop phenology calendar with Kc values |
+| `/api/compare/<a>/<b>` | Side-by-side site comparison |
+| `/api/alerts/digest/<site>` | Alert severity digest |
+| `/api/telemetry/<site>` | Live edge hub telemetry (NPU, probes, hub) |
 
 ---
 

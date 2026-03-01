@@ -1622,6 +1622,12 @@ function renderFarmerView(data) {
     renderModelAccuracy();
     renderFarmerFields(data);
     renderFarmerWeather();
+    renderWaterBalance(data);
+    renderCropTimeline();
+    renderTelemetry();
+    renderAlertDigest();
+    renderPlatformStats();
+    populateCompareSelector();
 }
 
 function renderFarmHealth(data) {
@@ -2007,3 +2013,549 @@ function q(sel) { return document.querySelector(sel); }
 function setStatus(msg) { const el = q("#headerStatus"); if (el) el.textContent = msg; }
 function esc(str) { if (!str) return ""; const d = document.createElement("div"); d.textContent = String(str); return d.innerHTML; }
 function escAttr(str) { return String(str || "").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
+
+
+// ═══════════════════════════════════════════════════════════════
+//  22. TOAST NOTIFICATION SYSTEM
+// ═══════════════════════════════════════════════════════════════
+
+function showToast(message, type = "info", duration = 4000) {
+    const container = q("#toastContainer");
+    if (!container) return;
+    const icons = { info: "ℹ️", success: "✅", warning: "⚠️", error: "❌", satellite: "🛰️" };
+    const toast = document.createElement("div");
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `
+        <span class="toast-icon">${icons[type] || "ℹ️"}</span>
+        <span class="toast-msg">${esc(message)}</span>
+        <button class="toast-close" onclick="this.parentElement.remove()">×</button>`;
+    container.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add("toast-in"));
+    setTimeout(() => {
+        toast.classList.add("toast-out");
+        setTimeout(() => toast.remove(), 400);
+    }, duration);
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  23. COMMAND PALETTE (Ctrl+K)
+// ═══════════════════════════════════════════════════════════════
+
+const CMD_ACTIONS = [
+    { id: "farmer", label: "Switch to Farmer View", icon: "🧑‍🌾", action: () => switchView("farmer") },
+    { id: "manager", label: "Switch to Manager View", icon: "📊", action: () => switchView("manager") },
+    { id: "globe", label: "Go to Globe", icon: "🌍", action: () => showHero() },
+    { id: "export", label: "Export CSV Data", icon: "📥", action: () => exportCSV() },
+    { id: "refresh", label: "Refresh Dashboard", icon: "🔄", action: () => loadDashboard(currentSite) },
+    ...Object.entries(SITES).map(([key, s]) => ({
+        id: `site-${key}`, label: `Switch to ${s.name}`, icon: "📍",
+        action: () => { q("#siteSelector").value = key; switchSite(key); },
+    })),
+    { id: "ndvi", label: "View NDVI Charts", icon: "🌿", action: () => { switchView("manager"); switchTab("ndvi"); } },
+    { id: "moisture", label: "View Soil Moisture", icon: "💧", action: () => { switchView("manager"); switchTab("moisture"); } },
+    { id: "anomalies", label: "View Anomalies", icon: "🐛", action: () => { switchView("manager"); switchTab("anomalies"); } },
+    { id: "yield", label: "View Yield Forecasts", icon: "📊", action: () => { switchView("manager"); switchTab("yield"); } },
+    { id: "weather", label: "View Weather", icon: "🌤️", action: () => { switchView("manager"); switchTab("weather"); } },
+    { id: "satellite", label: "Search Satellite Imagery", icon: "🛰️", action: () => { switchView("manager"); switchTab("satellite"); } },
+    { id: "shortcuts", label: "Show Keyboard Shortcuts", icon: "⌨️", action: () => showToast("Ctrl+K: Command Palette · F: Farmer · M: Manager · G: Globe · E: Export", "info", 6000) },
+];
+
+let cmdSelectedIdx = 0;
+
+function toggleCmdPalette() {
+    const pal = q("#cmdPalette");
+    if (!pal) return;
+    if (pal.hidden) {
+        pal.hidden = false;
+        requestAnimationFrame(() => pal.classList.add("cmd-open"));
+        const inp = q("#cmdInput");
+        inp.value = "";
+        inp.focus();
+        renderCmdResults("");
+        cmdSelectedIdx = 0;
+    } else {
+        closeCmdPalette();
+    }
+}
+
+function closeCmdPalette() {
+    const pal = q("#cmdPalette");
+    if (!pal) return;
+    pal.classList.remove("cmd-open");
+    setTimeout(() => { pal.hidden = true; }, 200);
+}
+
+function renderCmdResults(query) {
+    const results = q("#cmdResults");
+    if (!results) return;
+    const lq = query.toLowerCase();
+    const filtered = CMD_ACTIONS.filter(a => !lq || a.label.toLowerCase().includes(lq));
+
+    results.innerHTML = filtered.map((a, i) => `
+        <div class="cmd-item ${i === cmdSelectedIdx ? 'cmd-active' : ''}" data-idx="${i}"
+             onmouseenter="cmdSelectedIdx=${i};renderCmdResults(q('#cmdInput').value)"
+             onclick="CMD_ACTIONS.find(x=>x.id==='${a.id}').action();closeCmdPalette()">
+            <span class="cmd-item-icon">${a.icon}</span>
+            <span class="cmd-item-label">${esc(a.label)}</span>
+        </div>`).join("") || '<div class="cmd-empty">No results found</div>';
+}
+
+document.addEventListener("keydown", (e) => {
+    // Ctrl+K or Cmd+K
+    if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        toggleCmdPalette();
+        return;
+    }
+    // ESC closes palette
+    if (e.key === "Escape" && !q("#cmdPalette")?.hidden) {
+        closeCmdPalette();
+        return;
+    }
+    // If palette is open, handle navigation
+    if (!q("#cmdPalette")?.hidden) {
+        if (e.key === "ArrowDown") { e.preventDefault(); cmdSelectedIdx++; renderCmdResults(q("#cmdInput").value); }
+        if (e.key === "ArrowUp") { e.preventDefault(); cmdSelectedIdx = Math.max(0, cmdSelectedIdx - 1); renderCmdResults(q("#cmdInput").value); }
+        if (e.key === "Enter") {
+            e.preventDefault();
+            const items = q("#cmdResults").querySelectorAll(".cmd-item");
+            if (items[cmdSelectedIdx]) items[cmdSelectedIdx].click();
+        }
+        return;
+    }
+    // Global keyboard shortcuts (only when not typing in input)
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+    const wrap = q("#dashboardWrap");
+    if (!wrap || wrap.style.display === "none") return;
+    if (e.key === "f" || e.key === "F") switchView("farmer");
+    if (e.key === "m" || e.key === "M") switchView("manager");
+    if (e.key === "g" || e.key === "G") showHero();
+    if (e.key === "e" || e.key === "E") exportCSV();
+});
+
+// Wire up input
+document.addEventListener("DOMContentLoaded", () => {
+    const inp = q("#cmdInput");
+    if (inp) inp.addEventListener("input", (e) => { cmdSelectedIdx = 0; renderCmdResults(e.target.value); });
+    // Click outside to close
+    const pal = q("#cmdPalette");
+    if (pal) pal.addEventListener("click", (e) => { if (e.target === pal) closeCmdPalette(); });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+//  24. DATA EXPORT
+// ═══════════════════════════════════════════════════════════════
+
+function exportCSV() {
+    showToast(`Downloading CSV for ${SITES[currentSite]?.name || currentSite}…`, "satellite");
+    const a = document.createElement("a");
+    a.href = `/api/export/${currentSite}`;
+    a.download = "";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => showToast("CSV downloaded successfully!", "success"), 1500);
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  25. WATER BALANCE
+// ═══════════════════════════════════════════════════════════════
+
+function renderWaterBalance(data) {
+    const panel = q("#waterBalanceWrap");
+    if (!panel || !data.fields || data.fields.length === 0) return;
+
+    const fieldId = data.fields[0].field_id;
+    fetch(`/api/water-balance/${fieldId}`)
+        .then(r => r.json())
+        .then(wb => {
+            const deficit = wb.irrigation_need_mm;
+            const recColor = deficit > 20 ? "#ef4444" : deficit > 10 ? "#f59e0b" : "#22c55e";
+            const barMax = Math.max(wb.total_rainfall_mm, wb.total_etc_mm, 1);
+
+            panel.innerHTML = `
+                <div class="wb-summary">
+                    <div class="wb-gauge">
+                        <div class="wb-gauge-label">Irrigation Need</div>
+                        <div class="wb-gauge-value" style="color:${recColor}">${deficit.toFixed(0)} mm</div>
+                        <div class="wb-rec" style="color:${recColor}">${esc(wb.recommendation)}</div>
+                    </div>
+                    <div class="wb-bars">
+                        <div class="wb-bar-row">
+                            <span class="wb-label">🌧 Rain (${wb.period_days}d)</span>
+                            <div class="wb-bar"><div class="wb-fill rain" style="width:${Math.min(wb.total_rainfall_mm / barMax * 100, 100)}%"></div></div>
+                            <span class="wb-val">${wb.total_rainfall_mm.toFixed(0)} mm</span>
+                        </div>
+                        <div class="wb-bar-row">
+                            <span class="wb-label">☀️ ETc (${wb.period_days}d)</span>
+                            <div class="wb-bar"><div class="wb-fill etc" style="width:${Math.min(wb.total_etc_mm / barMax * 100, 100)}%"></div></div>
+                            <span class="wb-val">${wb.total_etc_mm.toFixed(0)} mm</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="wb-info">
+                    <span>Stage: <strong>${esc(wb.growth_stage)}</strong></span>
+                    <span>Kc: <strong>${wb.kc.toFixed(2)}</strong></span>
+                    <span>DAS: <strong>${wb.days_after_sowing}</strong></span>
+                </div>`;
+        })
+        .catch(() => {
+            panel.innerHTML = '<div class="empty-state">Water balance unavailable.</div>';
+        });
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  26. CROP PHENOLOGY TIMELINE
+// ═══════════════════════════════════════════════════════════════
+
+function renderCropTimeline() {
+    const panel = q("#phenologyWrap");
+    if (!panel) return;
+
+    fetch(`/api/crop-calendar/${currentSite}`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.calendars || data.calendars.length === 0) {
+                panel.innerHTML = '<div class="empty-state">No crop calendar data.</div>';
+                return;
+            }
+
+            panel.innerHTML = data.calendars.map(cal => {
+                const stageColors = ["#22c55e", "#06b6d4", "#f59e0b", "#ec4899", "#a855f7", "#f97316", "#14b8a6"];
+                return `
+                    <div class="pheno-field">
+                        <div class="pheno-header">
+                            <span class="pheno-crop">${esc(cal.crop)}</span>
+                            <span class="pheno-field-name">${esc(cal.field_name)}</span>
+                            <span class="pheno-das">Day ${cal.days_after_sowing}</span>
+                        </div>
+                        <div class="pheno-timeline">
+                            ${cal.stages.map((s, i) => `
+                                <div class="pheno-stage ${s.is_current ? 'pheno-active' : ''}"
+                                     style="flex:${s.day_end - s.day_start};background:${s.is_current ? stageColors[i % stageColors.length] : 'rgba(148,163,184,0.15)'}">
+                                    <span class="pheno-stage-name">${esc(s.name)}</span>
+                                    <span class="pheno-stage-kc">Kc ${s.kc.toFixed(1)}</span>
+                                </div>
+                            `).join("")}
+                        </div>
+                        <div class="pheno-progress">
+                            <div class="pheno-bar"><div class="pheno-fill" style="width:${cal.overall_progress}%"></div></div>
+                            <span class="pheno-pct">${cal.overall_progress}%</span>
+                        </div>
+                        <div class="pheno-meta">
+                            <span>Sown: ${cal.sowing_date}</span>
+                            <span>Est. Harvest: ${cal.estimated_harvest}</span>
+                        </div>
+                    </div>`;
+            }).join("");
+        })
+        .catch(() => { panel.innerHTML = '<div class="empty-state">Timeline unavailable.</div>'; });
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  27. LIVE TELEMETRY
+// ═══════════════════════════════════════════════════════════════
+
+let telemetryInterval = null;
+
+function renderTelemetry() {
+    const panel = q("#telemetryWrap");
+    if (!panel) return;
+    fetchTelemetry();
+    if (telemetryInterval) clearInterval(telemetryInterval);
+    telemetryInterval = setInterval(fetchTelemetry, 8000); // refresh every 8s
+}
+
+function fetchTelemetry() {
+    const panel = q("#telemetryWrap");
+    if (!panel) return;
+
+    fetch(`/api/telemetry/${currentSite}`)
+        .then(r => r.json())
+        .then(data => {
+            const npu = data.npu;
+            const hub = data.hub;
+            const probes = data.probes;
+
+            panel.innerHTML = `
+                <div class="telem-grid">
+                    <div class="telem-section">
+                        <h4>⚡ AMD Ryzen AI NPU</h4>
+                        <div class="telem-metrics">
+                            <div class="telem-metric">
+                                <div class="telem-ring" style="--pct:${npu.utilization_pct};--clr:#06b6d4">
+                                    <span>${npu.utilization_pct.toFixed(0)}%</span>
+                                </div>
+                                <span class="telem-label">NPU Load</span>
+                            </div>
+                            <div class="telem-metric">
+                                <div class="telem-ring" style="--pct:${npu.temperature_c / 100 * 100};--clr:${npu.temperature_c > 65 ? '#ef4444' : '#22c55e'}">
+                                    <span>${npu.temperature_c.toFixed(0)}°C</span>
+                                </div>
+                                <span class="telem-label">Temp</span>
+                            </div>
+                            <div class="telem-metric">
+                                <span class="telem-big">${npu.inference_ms.toFixed(1)}</span>
+                                <span class="telem-unit">ms</span>
+                                <span class="telem-label">Inference</span>
+                            </div>
+                            <div class="telem-metric">
+                                <span class="telem-big">${npu.tops_utilized.toFixed(0)}</span>
+                                <span class="telem-unit">TOPS</span>
+                                <span class="telem-label">Compute</span>
+                            </div>
+                            <div class="telem-metric">
+                                <span class="telem-big">${npu.power_watts.toFixed(0)}</span>
+                                <span class="telem-unit">W</span>
+                                <span class="telem-label">Power</span>
+                            </div>
+                            <div class="telem-metric">
+                                <span class="telem-big">${npu.total_inferences.toLocaleString()}</span>
+                                <span class="telem-label">Inferences</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="telem-section">
+                        <h4>🖥️ Edge Hub</h4>
+                        <div class="telem-hub-bars">
+                            <div class="hub-bar-row"><span>CPU</span><div class="hub-bar"><div class="hub-fill" style="width:${hub.cpu_pct}%;background:${hub.cpu_pct > 80 ? '#ef4444' : '#06b6d4'}"></div></div><span>${hub.cpu_pct}%</span></div>
+                            <div class="hub-bar-row"><span>RAM</span><div class="hub-bar"><div class="hub-fill" style="width:${hub.ram_pct}%;background:${hub.ram_pct > 80 ? '#ef4444' : '#22c55e'}"></div></div><span>${hub.ram_pct}%</span></div>
+                            <div class="hub-bar-row"><span>Disk</span><div class="hub-bar"><div class="hub-fill" style="width:${hub.disk_pct}%;background:${hub.disk_pct > 80 ? '#ef4444' : '#f59e0b'}"></div></div><span>${hub.disk_pct}%</span></div>
+                        </div>
+                        <div class="hub-info">
+                            <span>Uptime: ${hub.uptime_hours}h</span>
+                            <span>Sync: ${hub.last_sync}</span>
+                            <span>Net: ${hub.network}</span>
+                        </div>
+                    </div>
+                    <div class="telem-section">
+                        <h4>📡 Soil Probes (${probes.length})</h4>
+                        <div class="probe-grid">
+                            ${probes.slice(0, 8).map(p => `
+                                <div class="probe-chip ${p.battery_pct < 30 ? 'probe-low' : ''}">
+                                    <span class="probe-id">${p.probe_id}</span>
+                                    <span class="probe-val">${p.moisture_pct}%</span>
+                                    <span class="probe-temp">${p.temp_c}°C</span>
+                                    <span class="probe-bat">🔋${p.battery_pct}%</span>
+                                </div>
+                            `).join("")}
+                        </div>
+                    </div>
+                    <div class="telem-section">
+                        <h4>🛰️ Next Satellite Pass</h4>
+                        <div class="sat-pass">
+                            <span class="sat-name">${data.satellite_pass.satellite}</span>
+                            <span class="sat-time">${data.satellite_pass.next_pass}</span>
+                            <span class="sat-orbit">Orbit #${data.satellite_pass.orbit}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="telem-timestamp">Last update: ${data.timestamp}</div>`;
+        })
+        .catch(() => { panel.innerHTML = '<div class="empty-state">Telemetry offline.</div>'; });
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  28. ALERT DIGEST
+// ═══════════════════════════════════════════════════════════════
+
+function renderAlertDigest() {
+    const panel = q("#alertDigestWrap");
+    if (!panel) return;
+
+    fetch(`/api/alerts/digest/${currentSite}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.total_alerts === 0) {
+                panel.innerHTML = '<div class="digest-clear"><span class="digest-icon">✅</span><p>No active alerts — all fields healthy.</p></div>';
+                return;
+            }
+
+            panel.innerHTML = `
+                <div class="digest-summary">
+                    <div class="digest-stat critical"><span class="digest-num">${data.critical}</span><span>Critical</span></div>
+                    <div class="digest-stat warning"><span class="digest-num">${data.warnings}</span><span>Warnings</span></div>
+                    <div class="digest-stat total"><span class="digest-num">${data.total_alerts}</span><span>Total</span></div>
+                </div>
+                <div class="digest-list">
+                    ${data.alerts.slice(0, 8).map(a => `
+                        <div class="digest-item digest-${a.severity}">
+                            <span class="digest-badge">${a.severity === 'critical' ? '🔴' : '🟡'}</span>
+                            <div class="digest-body">
+                                <span class="digest-field">${esc(a.field)}</span>
+                                <span class="digest-msg">${esc(a.message)}</span>
+                            </div>
+                            <span class="digest-type">${esc(a.type.replace(/_/g,' '))}</span>
+                        </div>
+                    `).join("")}
+                </div>`;
+
+            // Fire toast for critical alerts
+            if (data.critical > 0) {
+                showToast(`⚠️ ${data.critical} critical alert${data.critical > 1 ? 's' : ''} at ${data.site}!`, "warning", 5000);
+            }
+        })
+        .catch(() => { panel.innerHTML = '<div class="empty-state">Alert digest unavailable.</div>'; });
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  29. SITE COMPARISON
+// ═══════════════════════════════════════════════════════════════
+
+function populateCompareSelector() {
+    const sel = q("#compareSelect");
+    if (!sel) return;
+    sel.innerHTML = Object.entries(SITES)
+        .filter(([k]) => k !== currentSite)
+        .map(([k, s]) => `<option value="${k}">${s.name}</option>`)
+        .join("");
+}
+
+function loadSiteComparison() {
+    const otherSite = q("#compareSelect")?.value;
+    const panel = q("#compareWrap");
+    if (!otherSite || !panel) return;
+
+    panel.innerHTML = '<div class="loading-placeholder">Comparing sites…</div>';
+
+    fetch(`/api/compare/${currentSite}/${otherSite}`)
+        .then(r => r.json())
+        .then(data => {
+            const a = data.site_a;
+            const b = data.site_b;
+
+            const metrics = [
+                { label: "Fields", a: a.field_count, b: b.field_count },
+                { label: "Area (ha)", a: a.total_area_ha, b: b.total_area_ha },
+                { label: "Avg NDVI", a: a.avg_ndvi.toFixed(3), b: b.avg_ndvi.toFixed(3), higher: true },
+                { label: "Soil Moisture %", a: a.avg_smc.toFixed(1), b: b.avg_smc.toFixed(1) },
+                { label: "Anomalies", a: a.total_anomalies, b: b.total_anomalies, lower: true },
+                { label: "Probes", a: a.soil_probes, b: b.soil_probes },
+            ];
+
+            panel.innerHTML = `
+                <div class="compare-table">
+                    <div class="compare-header">
+                        <span></span>
+                        <span class="compare-site-a">${esc(a.name)}</span>
+                        <span class="compare-site-b">${esc(b.name)}</span>
+                    </div>
+                    ${metrics.map(m => {
+                        const aVal = parseFloat(m.a);
+                        const bVal = parseFloat(m.b);
+                        let aClass = "", bClass = "";
+                        if (!isNaN(aVal) && !isNaN(bVal)) {
+                            if (m.higher) { aClass = aVal >= bVal ? "val-win" : ""; bClass = bVal > aVal ? "val-win" : ""; }
+                            else if (m.lower) { aClass = aVal <= bVal ? "val-win" : ""; bClass = bVal < aVal ? "val-win" : ""; }
+                        }
+                        return `<div class="compare-row">
+                            <span class="compare-label">${m.label}</span>
+                            <span class="compare-val ${aClass}">${m.a}</span>
+                            <span class="compare-val ${bClass}">${m.b}</span>
+                        </div>`;
+                    }).join("")}
+                </div>
+                <div class="compare-zones">
+                    <span>${esc(a.agro_zone)}</span>
+                    <span>vs</span>
+                    <span>${esc(b.agro_zone)}</span>
+                </div>`;
+        })
+        .catch(() => { panel.innerHTML = '<div class="empty-state">Comparison failed.</div>'; });
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  30. PLATFORM STATISTICS
+// ═══════════════════════════════════════════════════════════════
+
+function renderPlatformStats() {
+    const panel = q("#platformStatsWrap");
+    if (!panel) return;
+
+    fetch("/api/stats")
+        .then(r => r.json())
+        .then(data => {
+            const o = data.overview;
+            const stats = [
+                { icon: "📍", label: "Pilot Sites", value: o.pilot_sites },
+                { icon: "🌾", label: "Fields Monitored", value: o.total_fields },
+                { icon: "📐", label: "Total Area", value: o.total_area_ha + " ha" },
+                { icon: "🛰️", label: "Observations", value: o.spectral_observations.toLocaleString() },
+                { icon: "⚠️", label: "Anomalies Found", value: o.anomalies_detected.toLocaleString() },
+                { icon: "📲", label: "Nudges Sent", value: o.nudges_generated.toLocaleString() },
+                { icon: "🌤️", label: "Weather Records", value: o.weather_records.toLocaleString() },
+                { icon: "📊", label: "Yield Forecasts", value: o.yield_forecasts.toLocaleString() },
+                { icon: "💧", label: "SMC Predictions", value: o.soil_moisture_predictions.toLocaleString() },
+            ];
+
+            panel.innerHTML = `
+                <div class="pstats-grid">
+                    ${stats.map(s => `
+                        <div class="pstat-item">
+                            <span class="pstat-icon">${s.icon}</span>
+                            <span class="pstat-val">${s.value}</span>
+                            <span class="pstat-label">${s.label}</span>
+                        </div>
+                    `).join("")}
+                </div>
+                <div class="pstats-models">
+                    ${Object.entries(data.models).map(([k, m]) => `
+                        <div class="pstat-model">
+                            <span class="pstat-model-dot" style="background:${m.status === 'active' ? '#22c55e' : '#ef4444'}"></span>
+                            <span>${k.replace(/_/g,' ')}</span>
+                            <span class="pstat-acc">${m.accuracy}</span>
+                        </div>
+                    `).join("")}
+                </div>`;
+        })
+        .catch(() => { panel.innerHTML = '<div class="empty-state">Stats unavailable.</div>'; });
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  31. SYSTEM HEALTH (Footer)
+// ═══════════════════════════════════════════════════════════════
+
+function checkSystemHealth() {
+    fetch("/api/health")
+        .then(r => r.json())
+        .then(data => {
+            const badge = q("#footerHealth");
+            if (badge) {
+                const ok = data.status === "healthy";
+                badge.innerHTML = `<span style="color:${ok ? '#22c55e' : '#ef4444'}">●</span> ${ok ? 'System Online' : 'Degraded'} · Up ${data.uptime_human} · DB ${data.database.size_kb}KB`;
+                badge.style.color = ok ? "#22c55e" : "#ef4444";
+            }
+        })
+        .catch(() => {
+            const badge = q("#footerHealth");
+            if (badge) { badge.innerHTML = '<span style="color:#ef4444">●</span> System Offline'; badge.style.color = "#ef4444"; }
+        });
+}
+
+// Check health periodically
+setInterval(checkSystemHealth, 30000);
+
+
+// ═══════════════════════════════════════════════════════════════
+//  32. STARTUP TOASTS & ENTRY ENHANCEMENTS
+// ═══════════════════════════════════════════════════════════════
+
+// Wrap enterDashboard to add toast notifications and health check
+const _origEnterDashboard = enterDashboard;
+
+window.enterDashboard = function() {
+    _origEnterDashboard();
+    setTimeout(() => checkSystemHealth(), 800);
+    setTimeout(() => showToast(`Connected to ${SITES[currentSite]?.name || currentSite}`, "success"), 1500);
+    setTimeout(() => showToast("Press Ctrl+K for quick navigation", "info", 5000), 3500);
+};
+
