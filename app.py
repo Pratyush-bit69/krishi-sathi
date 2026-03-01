@@ -9,9 +9,8 @@ Data sources:
   - Simulated sensor data (soil moisture probes)
 
 Pilot sites:
-  1. Dr. Ambedkar Institute of Technology, Bengaluru (12.9588 N, 77.5038 E)
-  2. ICRISAT, Patancheru / Hyderabad (17.320 N, 78.210 E)
-  3. Ludhiana, Punjab (30.9010 N, 75.8573 E)
+  1. ICRISAT, Patancheru / Hyderabad (17.320 N, 78.210 E)
+  2. Ludhiana, Punjab (30.9010 N, 75.8573 E)
 """
 
 from flask import Flask, request, jsonify, send_from_directory

@@ -7,7 +7,7 @@
 //  GLOBAL STATE
 // ═══════════════════════════════════════════════════════════════
 
-let currentSite = "bengaluru";
+let currentSite = "icrisat";
 let dashboardData = null;
 let map = null;
 let fieldLayers = {};
@@ -21,7 +21,6 @@ let globe = { scene: null, camera: null, renderer: null, sphere: null, clouds: n
 
 // Pilot site coords
 const SITES = {
-    bengaluru: { lat: 12.9588, lon: 77.5038, name: "AIT Bengaluru", color: "#22c55e" },
     icrisat:   { lat: 17.320,  lon: 78.210,  name: "ICRISAT Hyderabad", color: "#06b6d4" },
     ludhiana:  { lat: 30.9010, lon: 75.8573,  name: "Ludhiana Punjab", color: "#f59e0b" },
     nashik:    { lat: 19.9975, lon: 73.7898,  name: "Nashik Maharashtra", color: "#a855f7" },
@@ -488,8 +487,7 @@ function addConnectionArcs() {
 
     // Connect nearby sites (pairs)
     const pairs = [
-        ["bengaluru", "coimbatore"],
-        ["bengaluru", "icrisat"],
+        ["coimbatore", "icrisat"],
         ["icrisat", "nashik"],
         ["nashik", "bhopal"],
         ["bhopal", "varanasi"],

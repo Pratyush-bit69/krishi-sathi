@@ -128,34 +128,6 @@ CROP_PROFILES = {
 
 # ─── Pilot Sites ───
 PILOT_SITES = {
-    "bengaluru": {
-        "name": "Dr. Ambedkar Institute of Technology, Bengaluru",
-        "short_name": "AIT Bengaluru",
-        "lat": 12.9588,
-        "lon": 77.5038,
-        "type": "college_farm",
-        "agro_zone": "Southern Plateau",
-        "primary_crops": ["rice", "sorghum"],
-        "demo_window": {
-            "start": "2026-03-10",
-            "end": "2026-03-20",
-            "season": "Post-Rabi / Early Dry",
-            "purpose": "Water-stress nudges, NDVI baselines, on-field validation",
-        },
-        "fields": [
-            {"id": "BLR-F01", "name": "East Block A", "area_ha": 2.5, "crop": "rice",
-             "sowing_date": "2025-11-01", "irrigation": "drip",
-             "bbox": [77.4988, 12.9548, 77.5088, 12.9628]},
-            {"id": "BLR-F02", "name": "West Block B", "area_ha": 1.8, "crop": "sorghum",
-             "sowing_date": "2025-11-15", "irrigation": "sprinkler",
-             "bbox": [77.4958, 12.9558, 77.5028, 12.9618]},
-            {"id": "BLR-F03", "name": "Trial Plot C", "area_ha": 0.5, "crop": "wheat",
-             "sowing_date": "2025-10-20", "irrigation": "flood",
-             "bbox": [77.5038, 12.9568, 77.5078, 12.9598]},
-        ],
-        "soil_probes": 12,
-        "hub_hardware": "AMD Ryzen AI 9 HX 375 Workstation",
-    },
     "icrisat": {
         "name": "ICRISAT, Patancheru (Hyderabad)",
         "short_name": "ICRISAT Hyderabad",
